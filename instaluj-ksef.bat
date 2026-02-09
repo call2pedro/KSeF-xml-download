@@ -143,6 +143,7 @@ echo  [1/7] Wykrywanie architektury systemu...
 set "PY_ARCH=amd64"
 set "NODE_ARCH=win-x64"
 set "NODE_AVAILABLE=1"
+set "PDF_AVAILABLE=1"
 
 :: Obsluga WoW64 (32-bit proces na 64-bit OS)
 if defined PROCESSOR_ARCHITEW6432 (
@@ -159,6 +160,7 @@ if /i "%REAL_ARCH%"=="x86" (
     set "PY_ARCH=win32"
     set "NODE_ARCH=NONE"
     set "NODE_AVAILABLE=0"
+    set "PDF_AVAILABLE=0"
 )
 if /i "%REAL_ARCH%"=="ARM64" (
     set "PY_ARCH=arm64"
@@ -365,7 +367,7 @@ where curl.exe >nul 2>&1
 if !ERRORLEVEL! neq 0 goto :node_dl_ps
 echo [%DATE% %TIME%] [3/7] Metoda: curl.exe >> "%LOG_FILE%"
 echo        Metoda: curl.exe
-curl.exe -L --progress-bar --connect-timeout 30 -o "%NODE_ZIP%" "%NODE_URL%"
+curl.exe -L --progress-bar --connect-timeout 30 --max-time 300 -o "%NODE_ZIP%" "%NODE_URL%"
 set "DL_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [3/7] curl ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
 if !DL_ERR! equ 0 goto :node_dl_done
@@ -423,6 +425,11 @@ if !ERRORLEVEL! neq 0 (
     goto :skip_node_download
 )
 
+:: Usun stary katalog Node.js (przy reinstalacji)
+if exist "%NODE_DIR%" (
+    rmdir /S /Q "%NODE_DIR%" >nul 2>&1
+)
+
 :: ZIP zawiera katalog wewnetrzny np. node-v22.13.1-win-x64/ - przenoszimy zawartosc
 mkdir "%NODE_DIR%" >nul 2>&1
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-ChildItem '%NODE_EXTRACT%' -Directory | Select-Object -First 1; if ($d) { Get-ChildItem $d.FullName | Move-Item -Destination '%NODE_DIR%' -Force } else { exit 1 }"
@@ -444,7 +451,21 @@ if not exist "%NODE_DIR%\node.exe" (
 echo [%DATE% %TIME%] [3/7] Node.js OK >> "%LOG_FILE%"
 echo        Node.js v%NODE_VER% zainstalowany pomyslnie.
 
+:: Dodaj Node.js do sciezki PATH uzytkownika (uzywa zmiennej %%LOCALAPPDATA%%)
+echo        Dodawanie Node.js do sciezki PATH...
+echo [%DATE% %TIME%] [3/7] Dodawanie do PATH >> "%LOG_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); $c=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $e='%%LOCALAPPDATA%%\KSeFCLI\node'; if(-not $c){$k.SetValue('Path',$e,[Microsoft.Win32.RegistryValueKind]::ExpandString)}elseif($c -notlike '*KSeFCLI\node*'){$k.SetValue('Path',($c+';'+$e),[Microsoft.Win32.RegistryValueKind]::ExpandString)};$k.Close()"
+set "PATH_ERR=!ERRORLEVEL!"
+echo [%DATE% %TIME%] [3/7] PATH ERRORLEVEL=!PATH_ERR! >> "%LOG_FILE%"
+if !PATH_ERR! equ 0 (
+    echo        Node.js dodany do PATH uzytkownika.
+) else (
+    echo  [UWAGA] Nie udalo sie dodac Node.js do PATH.
+)
+
 :skip_node_download
+:: Jesli Node.js niedostepny, PDF tez niedostepny
+if "%NODE_AVAILABLE%"=="0" set "PDF_AVAILABLE=0"
 
 :: ============================================================================
 :: KROK 4/7: Pobieranie repozytoriow z GitHub
@@ -581,7 +602,7 @@ if !ERRORLEVEL! neq 0 (
     if !ERRORLEVEL! neq 0 (
         echo  [UWAGA] Nie udalo sie pobrac ksef-pdf-generator z GitHub.
         echo          Generowanie PDF nie bedzie mozliwe.
-        set "NODE_AVAILABLE=0"
+        set "PDF_AVAILABLE=0"
         goto :skip_pdf_download
     )
 )
@@ -590,12 +611,12 @@ if !ERRORLEVEL! neq 0 (
 for %%F in ("%PDF_ZIP%") do set "PDFZIP_SIZE=%%~zF"
 if "!PDFZIP_SIZE!"=="" (
     echo  [UWAGA] Pobrany plik ksef-pdf-generator jest pusty.
-    set "NODE_AVAILABLE=0"
+    set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 if !PDFZIP_SIZE! GEQ 1000 goto :pdf_size_ok
 echo  [UWAGA] Pobrany plik ksef-pdf-generator jest za maly - !PDFZIP_SIZE! bajtow.
-set "NODE_AVAILABLE=0"
+set "PDF_AVAILABLE=0"
 goto :skip_pdf_download
 :pdf_size_ok
 
@@ -605,7 +626,7 @@ set "PDF_EXTRACT=%TEMP_DIR%\pdf-repo"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%PDF_ZIP%' -DestinationPath '%PDF_EXTRACT%' -Force"
 if !ERRORLEVEL! neq 0 (
     echo  [UWAGA] Nie udalo sie rozpakowac ksef-pdf-generator.
-    set "NODE_AVAILABLE=0"
+    set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 
@@ -613,7 +634,7 @@ set "PDF_INNER="
 for /d %%D in ("%PDF_EXTRACT%\*") do set "PDF_INNER=%%D"
 if "!PDF_INNER!"=="" (
     echo  [UWAGA] Nie znaleziono katalogu wewnatrz archiwum ksef-pdf-generator.
-    set "NODE_AVAILABLE=0"
+    set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 
@@ -622,7 +643,7 @@ xcopy "!PDF_INNER!\*" "%PDF_DIR%\" /E /Y /Q >nul 2>&1
 
 if not exist "%PDF_DIR%\package.json" (
     echo  [UWAGA] Brak package.json w ksef-pdf-generator.
-    set "NODE_AVAILABLE=0"
+    set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 if not exist "%PDF_DIR%\src\cli.ts" (
@@ -666,7 +687,7 @@ if !PIP_INST_ERR! neq 0 (
 echo        Zaleznosci Python zainstalowane pomyslnie.
 
 :: --- Node.js: npm install ---
-if "%NODE_AVAILABLE%"=="0" (
+if "%PDF_AVAILABLE%"=="0" (
     echo.
     echo        --- Zaleznosci Node.js: pominieto ---
     goto :skip_npm_install
@@ -972,18 +993,24 @@ if "%NODE_AVAILABLE%"=="1" (
     echo   Node.js:             %NODE_DIR%\node.exe
 )
 echo   ksef-cli:            %CLI_DIR%
-if "%NODE_AVAILABLE%"=="1" (
+if "%PDF_AVAILABLE%"=="1" (
     echo   ksef-pdf-generator:  %PDF_DIR%
 )
 echo   Folder podatnika:    !NIP_DIR!
 echo   Faktury:             !XML_DIR!
 echo.
-if "%NODE_AVAILABLE%"=="1" (
-    echo   Pobrane faktury XML beda automatycznie konwertowane do PDF.
-) else (
-    echo   [INFO] Generowanie PDF niedostepne - brak Node.js.
-    echo          Faktury beda dostepne jako pliki XML.
-)
+if "%PDF_AVAILABLE%"=="1" goto :summary_pdf_ok
+if "%NODE_AVAILABLE%"=="1" goto :summary_node_only
+echo   [INFO] Generowanie PDF niedostepne - brak Node.js.
+echo          Faktury beda dostepne jako pliki XML.
+goto :summary_pdf_done
+:summary_node_only
+echo   [INFO] Generowanie PDF niedostepne - blad pobierania ksef-pdf-generator.
+echo          Node.js zainstalowany. Faktury dostepne jako XML.
+goto :summary_pdf_done
+:summary_pdf_ok
+echo   Pobrane faktury XML beda automatycznie konwertowane do PDF.
+:summary_pdf_done
 echo.
 echo  ============================================================
 echo.
