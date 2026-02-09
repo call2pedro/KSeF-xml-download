@@ -1,0 +1,15 @@
+# Pliki tymczasowe Windows
+*.tmp
+~$*
+Thumbs.db
+Desktop.ini
+
+# Pliki testowe
+test/
+*.log
+
+# Token
+GITHUB_TOKEN.md
+
+# Notatki deweloperskie
+CLAUDE.md
