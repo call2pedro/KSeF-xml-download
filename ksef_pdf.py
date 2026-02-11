@@ -672,3 +672,11 @@ def generate_pdf(xml_path: Path, pdf_path: Path):
     """
     data = parse_ksef_xml(xml_path)
     generate_invoice_pdf(data, pdf_path)
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 3:
+        print("Uzycie: ksef_pdf.py input.xml output.pdf")
+        sys.exit(1)
+    generate_pdf(Path(sys.argv[1]), Path(sys.argv[2]))

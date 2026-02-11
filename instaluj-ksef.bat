@@ -783,30 +783,9 @@ if exist "%INSTALL_DIR%\ksef-pdf-generator" (
     echo        Usunieto stary katalog: ksef-pdf-generator
 )
 
-:: --- gen_pdf.py (wrapper for ksef_pdf.py) ---
-if "%PDF_AVAILABLE%"=="1" (
-    (
-        echo import sys
-        echo from pathlib import Path
-        echo sys.path.insert(0, str(Path(__file__^).parent^)^)
-        echo from ksef_pdf import generate_pdf
-        echo if len(sys.argv^) != 3:
-        echo     print("Uzycie: gen_pdf.py input.xml output.pdf"^)
-        echo     sys.exit(1^)
-        echo generate_pdf(Path(sys.argv[1]^), Path(sys.argv[2]^)^)
-    ) > "%INSTALL_DIR%\gen_pdf.py"
-    echo        gen_pdf.py utworzony
-)
-
 :: --- Weryfikacja generatora PDF ---
 echo [%DATE% %TIME%] [7/7] PDF_AVAILABLE=%PDF_AVAILABLE% >> "%LOG_FILE%"
 if "%PDF_AVAILABLE%"=="1" (
-    if exist "%INSTALL_DIR%\gen_pdf.py" (
-        echo [%DATE% %TIME%] [7/7] gen_pdf.py OK: %INSTALL_DIR%\gen_pdf.py >> "%LOG_FILE%"
-    ) else (
-        echo [%DATE% %TIME%] [7/7] BRAK gen_pdf.py! >> "%LOG_FILE%"
-        echo  [UWAGA] gen_pdf.py nie zostal utworzony!
-    )
     if exist "%INSTALL_DIR%\ksef_pdf.py" (
         echo [%DATE% %TIME%] [7/7] ksef_pdf.py OK: %INSTALL_DIR%\ksef_pdf.py >> "%LOG_FILE%"
     ) else (
@@ -878,13 +857,7 @@ setlocal DisableDelayedExpansion
     echo.
     echo :: --- Generowanie PDF ---
     echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] gen_pdf.py: %%KSEF%%\gen_pdf.py ^>^> "%%LOG%%"
     echo echo [%%DATE%% %%TIME%%] ksef_pdf.py: %%KSEF%%\ksef_pdf.py ^>^> "%%LOG%%"
-    echo if not exist "%%KSEF%%\gen_pdf.py" ^(
-    echo     echo [%%DATE%% %%TIME%%] BRAK gen_pdf.py - pomijam PDF ^>^> "%%LOG%%"
-    echo     echo  [INFO] Brak gen_pdf.py - generowanie PDF pominiete.
-    echo     goto :skip_pdf
-    echo ^)
     echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
     echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
     echo     echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
@@ -905,7 +878,7 @@ setlocal DisableDelayedExpansion
     echo     if not exist "%%%%~dpnf.pdf" ^(
     echo         echo   PDF: %%%%~nxf
     echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf ^>^> "%%LOG%%"
-    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\gen_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
+    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
     echo         if !ERRORLEVEL! equ 0 ^(
     echo             set /a PDF_COUNT+=1
     echo         ^) else ^(
