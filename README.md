@@ -2,7 +2,7 @@
 
 Jednorazowy skrypt `.bat` ktory instaluje narzedzia do pobierania faktur XML z **Krajowego Systemu e-Faktur (KSeF)** oraz automatycznego generowania PDF - na komputerze z Windows, bez uprawnien administratora.
 
-Wersja: **1.0**
+Wersja: **1.1**
 
 ## Szybki start
 
@@ -18,16 +18,16 @@ Wersja: **1.0**
 |------|------|
 | 1/7 | Wykrywa architekture systemu (64-bit, 32-bit, ARM) |
 | 2/7 | Pobiera Python 3.12 embeddable (curl/PowerShell/certutil, nie wymaga admina) |
-| 3/7 | Pobiera Node.js 22 LTS portable (curl/PowerShell/certutil, nie wymaga admina) |
-| 4/7 | Pobiera ksef-cli i ksef-pdf-generator z GitHub |
-| 5/7 | Instaluje zaleznosci Python (pip) i Node.js (npm) |
+| 3/7 | Pobiera generator PDF (ksef_pdf.py + fonts) z GitHub |
+| 4/7 | Pobiera ksef-cli z GitHub + patchuje sciezki wyjsciowe |
+| 5/7 | Instaluje zaleznosci Python (pip: ksef-cli + fpdf2/defusedxml) |
 | 6/7 | Pyta o token KSeF i NIP firmy, tworzy folder podatnika |
 | 7/7 | Tworzy pliki konfiguracyjne i launcher w folderze podatnika |
 
 ## Co zostaje zainstalowane?
 
 - **[ksef-cli](https://github.com/aiv/ksef-cli)** (Python) - pobiera faktury XML z KSeF
-- **[ksef-pdf-generator](https://github.com/aiv/ksef-pdf-generator)** (Node.js) - konwertuje pobrane XML-e na czytelne pliki PDF
+- **ksef_pdf.py** (Python/fpdf2) - konwertuje pobrane XML-e na czytelne pliki PDF z prawidlowa obsluga polskich znakow diakrytycznych
 
 Launcher automatycznie laczy oba narzedzia: najpierw pobiera nowe faktury, potem generuje z nich PDF-y.
 
@@ -37,23 +37,24 @@ Launcher automatycznie laczy oba narzedzia: najpierw pobiera nowe faktury, potem
 - Polaczenie z internetem (tylko podczas instalacji i pobierania faktur)
 - **Nie wymaga uprawnien administratora**
 
-> **Uwaga:** Na systemach 32-bit (x86) Node.js nie jest dostepny - instalator zainstaluje tylko ksef-cli (pobieranie XML). Generowanie PDF wymaga systemu 64-bit.
+Generowanie PDF dziala na wszystkich architekturach Windows (64-bit, 32-bit, ARM).
 
 ## Struktura po instalacji
 
 ```
 %LOCALAPPDATA%\KSeFCLI\
   python\                       Python 3.12 embeddable
-  node\                         Node.js 22 LTS portable
   ksef-cli\                     Kod aplikacji (wspolny)
-  ksef-pdf-generator\           Generator PDF (wspolny)
+  ksef_pdf.py                   Generator PDF (fpdf2)
+  gen_pdf.py                    Wrapper CLI dla ksef_pdf.py
+  fonts\                        Fonty Inter (TTF) do renderowania PDF
   <NIP>\                        Folder podatnika (np. 1234567890\)
     .env                        Token KSeF i NIP
     faktury\                    Pobrane faktury XML + wygenerowane PDF
     pobierz-faktury.bat         Launcher
 ```
 
-Kazdy NIP ma wlasny folder z konfiguracja, fakturami i launcherem. Runtimes (Python, Node.js) i kod aplikacji sa wspolne.
+Kazdy NIP ma wlasny folder z konfiguracja, fakturami i launcherem. Runtime (Python) i kod aplikacji sa wspolne.
 
 ## Konfiguracja
 
@@ -71,14 +72,13 @@ Konfiguracje mozna pozniej zmienic edytujac plik:
 
 ## Uzyte projekty
 
-| Projekt | Repozytorium | Oryginal | Jezyk |
-|---------|-------------|----------|-------|
-| ksef-cli | [aiv/ksef-cli](https://github.com/aiv/ksef-cli) | — | Python |
-| ksef-pdf-generator | [aiv/ksef-pdf-generator](https://github.com/aiv/ksef-pdf-generator) | [CIRFMF/ksef-pdf-generator](https://github.com/CIRFMF/ksef-pdf-generator) | TypeScript/Node.js |
+| Projekt | Repozytorium | Jezyk |
+|---------|-------------|-------|
+| ksef-cli | [aiv/ksef-cli](https://github.com/aiv/ksef-cli) | Python |
+| ksef_pdf.py | fpdf2 (w tym repozytorium) | Python |
 
 Instalator automatycznie pobiera takze:
 - **[Python 3.12](https://www.python.org/)** embeddable (nie wymaga instalacji systemowej)
-- **[Node.js 22 LTS](https://nodejs.org/)** portable (nie wymaga instalacji systemowej)
 
 ## Autor
 

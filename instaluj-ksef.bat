@@ -12,22 +12,19 @@ setlocal EnableDelayedExpansion
 
 :: ============================================================================
 :: Instalator KSeF CLI + PDF Generator dla Windows
-:: Pobiera Python embeddable + Node.js portable + ksef-cli + ksef-pdf-generator
+:: Pobiera Python embeddable + ksef-cli + ksef_pdf.py (fpdf2)
 :: Konfiguruje i tworzy launcher do pobierania faktur z KSeF
 :: Nie wymaga uprawnien administratora
 :: ============================================================================
 
-set "VERSION=1.0"
+set "VERSION=1.1"
 set "PYTHON_VER=3.12.10"
 set "PYTHON_VER_SHORT=312"
-set "NODE_VER=22.13.1"
 set "GITHUB_REPO_CLI=aiv/ksef-cli"
-set "GITHUB_REPO_PDF=aiv/ksef-pdf-generator"
+set "GITHUB_REPO_SELF=call2pedro/KSeF-xml-download"
 set "INSTALL_DIR=%LOCALAPPDATA%\KSeFCLI"
 set "PYTHON_DIR=%INSTALL_DIR%\python"
-set "NODE_DIR=%INSTALL_DIR%\node"
 set "CLI_DIR=%INSTALL_DIR%\ksef-cli"
-set "PDF_DIR=%INSTALL_DIR%\ksef-pdf-generator"
 set "TEMP_DIR=%TEMP%\ksef-install-%RANDOM%"
 
 :: --- Debug log ---
@@ -58,8 +55,7 @@ echo  Instalacja do: %INSTALL_DIR%
 echo.
 echo  Projekty:
 echo   ksef-cli           https://github.com/%GITHUB_REPO_CLI%
-echo   ksef-pdf-generator https://github.com/%GITHUB_REPO_PDF%
-echo                       oryg: https://github.com/CIRFMF/ksef-pdf-generator
+echo   ksef_pdf.py        fpdf2 (Python) - generator PDF
 echo.
 echo  ------------------------------------------------------------
 echo   WARUNKI KORZYSTANIA
@@ -141,8 +137,6 @@ echo [%DATE% %TIME%] [1/7] START >> "%LOG_FILE%"
 echo  [1/7] Wykrywanie architektury systemu...
 
 set "PY_ARCH=amd64"
-set "NODE_ARCH=win-x64"
-set "NODE_AVAILABLE=1"
 set "PDF_AVAILABLE=1"
 
 :: Obsluga WoW64 (32-bit proces na 64-bit OS)
@@ -152,38 +146,15 @@ if defined PROCESSOR_ARCHITEW6432 (
     set "REAL_ARCH=%PROCESSOR_ARCHITECTURE%"
 )
 
-if /i "%REAL_ARCH%"=="AMD64" (
-    set "PY_ARCH=amd64"
-    set "NODE_ARCH=win-x64"
-)
-if /i "%REAL_ARCH%"=="x86" (
-    set "PY_ARCH=win32"
-    set "NODE_ARCH=NONE"
-    set "NODE_AVAILABLE=0"
-    set "PDF_AVAILABLE=0"
-)
-if /i "%REAL_ARCH%"=="ARM64" (
-    set "PY_ARCH=arm64"
-    set "NODE_ARCH=win-arm64"
-)
-if /i "%REAL_ARCH%"=="EM64T" (
-    set "PY_ARCH=amd64"
-    set "NODE_ARCH=win-x64"
-)
+if /i "%REAL_ARCH%"=="AMD64" set "PY_ARCH=amd64"
+if /i "%REAL_ARCH%"=="x86" set "PY_ARCH=win32"
+if /i "%REAL_ARCH%"=="ARM64" set "PY_ARCH=arm64"
+if /i "%REAL_ARCH%"=="EM64T" set "PY_ARCH=amd64"
 
-echo [%DATE% %TIME%] [1/7] REAL_ARCH=%REAL_ARCH% PY_ARCH=%PY_ARCH% NODE_ARCH=%NODE_ARCH% >> "%LOG_FILE%"
+echo [%DATE% %TIME%] [1/7] REAL_ARCH=%REAL_ARCH% PY_ARCH=%PY_ARCH% >> "%LOG_FILE%"
 
 echo        Architektura: %REAL_ARCH%
 echo        Python:       %PY_ARCH%
-if "%NODE_AVAILABLE%"=="1" (
-    echo        Node.js:      %NODE_ARCH%
-) else (
-    echo.
-    echo  [UWAGA] Node.js nie jest dostepny dla architektury x86 (32-bit^).
-    echo          Generowanie PDF nie bedzie mozliwe.
-    echo          Pobieranie faktur XML bedzie dzialac normalnie.
-    echo.
-)
 
 :: ============================================================================
 :: KROK 2/7: Pobieranie i konfiguracja Python embeddable
@@ -291,8 +262,8 @@ echo [%DATE% %TIME%] [2/7] python.exe OK >> "%LOG_FILE%"
 set "PTH_FILE=%PYTHON_DIR%\python%PYTHON_VER_SHORT%._pth"
 if not exist "%PTH_FILE%" goto :skip_pth
 echo        Konfiguracja sciezek Python...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = Get-Content '%PTH_FILE%' -Raw; $c = $c -replace '#import site','import site'; $nl = [char]13 + [char]10; $c = $c.TrimEnd() + $nl + '%CLI_DIR%'; Set-Content '%PTH_FILE%' -Value $c -NoNewline"
-echo [%DATE% %TIME%] [2/7] _pth zaktualizowany: dodano import site + %CLI_DIR% >> "%LOG_FILE%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = Get-Content '%PTH_FILE%' -Raw; $c = $c -replace '#import site','import site'; $nl = [char]13 + [char]10; $c = $c.TrimEnd() + $nl + '%CLI_DIR%' + $nl + '%INSTALL_DIR%'; Set-Content '%PTH_FILE%' -Value $c -NoNewline"
+echo [%DATE% %TIME%] [2/7] _pth zaktualizowany: dodano import site + %CLI_DIR% + %INSTALL_DIR% >> "%LOG_FILE%"
 goto :pth_done
 :skip_pth
 echo [%DATE% %TIME%] [2/7] UWAGA: _pth nie znaleziony >> "%LOG_FILE%"
@@ -344,128 +315,125 @@ echo [%DATE% %TIME%] [2/7] Python OK >> "%LOG_FILE%"
 echo        Python %PYTHON_VER% zainstalowany pomyslnie.
 
 :: ============================================================================
-:: KROK 3/7: Pobieranie Node.js portable
+:: KROK 3/7: Pobieranie generatora PDF (ksef_pdf.py + fonts)
 :: ============================================================================
 echo [%DATE% %TIME%] [3/7] START >> "%LOG_FILE%"
 echo.
-if "%NODE_AVAILABLE%"=="0" (
-    echo  [3/7] Pominieto Node.js (brak wersji dla x86^)
-    goto :skip_node_download
-)
+echo  [3/7] Pobieranie generatora PDF (Python/fpdf2)...
 
-echo  [3/7] Pobieranie Node.js v%NODE_VER% (%NODE_ARCH%)...
+set "SELF_ZIP=%TEMP_DIR%\ksef-self.zip"
+set "SELF_BRANCH=main"
 
-set "NODE_URL=https://nodejs.org/dist/v%NODE_VER%/node-v%NODE_VER%-%NODE_ARCH%.zip"
-set "NODE_ZIP=%TEMP_DIR%\node.zip"
+set "SELF_URL=https://github.com/%GITHUB_REPO_SELF%/archive/refs/heads/main.zip"
+echo        URL: %SELF_URL%
+echo [%DATE% %TIME%] [3/7] URL=%SELF_URL% >> "%LOG_FILE%"
 
-:: Pobierz Node.js
-echo        URL: %NODE_URL%
-echo [%DATE% %TIME%] [3/7] URL=%NODE_URL% >> "%LOG_FILE%"
-
-:: curl
+:: Metoda 1: curl
 where curl.exe >nul 2>&1
-if !ERRORLEVEL! neq 0 goto :node_dl_ps
+if !ERRORLEVEL! neq 0 goto :self_dl_ps
 echo [%DATE% %TIME%] [3/7] Metoda: curl.exe >> "%LOG_FILE%"
 echo        Metoda: curl.exe
-curl.exe -L --progress-bar --connect-timeout 30 --max-time 300 -o "%NODE_ZIP%" "%NODE_URL%"
+curl.exe -L --progress-bar --connect-timeout 30 -o "%SELF_ZIP%" "%SELF_URL%"
 set "DL_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [3/7] curl ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :node_dl_done
-del "%NODE_ZIP%" >nul 2>&1
+if !DL_ERR! equ 0 goto :self_dl_done
+del "%SELF_ZIP%" >nul 2>&1
 
-:node_dl_ps
+:self_dl_ps
+:: Metoda 2: PowerShell
 echo [%DATE% %TIME%] [3/7] Metoda: PowerShell >> "%LOG_FILE%"
 echo        Metoda: PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%NODE_ZIP%' -UseBasicParsing } catch { exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%SELF_URL%' -OutFile '%SELF_ZIP%' -UseBasicParsing } catch { exit 1 }"
 set "DL_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [3/7] PowerShell ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :node_dl_done
-del "%NODE_ZIP%" >nul 2>&1
+if !DL_ERR! equ 0 goto :self_dl_done
+del "%SELF_ZIP%" >nul 2>&1
 
-:: certutil
+:: Metoda 3: certutil
 echo [%DATE% %TIME%] [3/7] Metoda: certutil >> "%LOG_FILE%"
 echo        Metoda: certutil
-certutil -urlcache -split -f "%NODE_URL%" "%NODE_ZIP%" >> "%LOG_FILE%" 2>&1
+certutil -urlcache -split -f "%SELF_URL%" "%SELF_ZIP%" >> "%LOG_FILE%" 2>&1
 set "DL_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [3/7] certutil ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :node_dl_done
+if !DL_ERR! equ 0 goto :self_dl_done
 
-echo [%DATE% %TIME%] [3/7] BLAD: Pobieranie Node.js >> "%LOG_FILE%"
-echo  [BLAD] Nie udalo sie pobrac Node.js. Kod: !DL_ERR!
-echo  [UWAGA] Kontynuowanie bez Node.js - generowanie PDF nie bedzie mozliwe.
-set "NODE_AVAILABLE=0"
-goto :skip_node_download
+echo [%DATE% %TIME%] [3/7] BLAD: Pobieranie generatora PDF >> "%LOG_FILE%"
+echo  [UWAGA] Nie udalo sie pobrac generatora PDF. Kod: !DL_ERR!
+echo          Generowanie PDF nie bedzie mozliwe.
+echo          Pobieranie faktur XML bedzie dzialac normalnie.
+set "PDF_AVAILABLE=0"
+goto :skip_pdf_download
 
-:node_dl_done
-:: Sprawdz rozmiar pliku
-for %%F in ("%NODE_ZIP%") do set "NODEZIP_SIZE=%%~zF"
-echo [%DATE% %TIME%] [3/7] Rozmiar: !NODEZIP_SIZE! bajtow >> "%LOG_FILE%"
-if "!NODEZIP_SIZE!"=="" (
-    echo  [BLAD] Pobrany plik Node.js jest pusty.
-    echo  [UWAGA] Kontynuowanie bez Node.js.
-    set "NODE_AVAILABLE=0"
-    goto :skip_node_download
+:self_dl_done
+:: Sprawdz rozmiar
+for %%F in ("%SELF_ZIP%") do set "SELFZIP_SIZE=%%~zF"
+echo [%DATE% %TIME%] [3/7] Rozmiar: !SELFZIP_SIZE! bajtow >> "%LOG_FILE%"
+if "!SELFZIP_SIZE!"=="" (
+    echo  [UWAGA] Pobrany plik generatora PDF jest pusty.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
 )
-if !NODEZIP_SIZE! GEQ 5000000 goto :node_size_ok
-echo  [BLAD] Pobrany plik Node.js jest za maly - !NODEZIP_SIZE! bajtow.
-echo  [UWAGA] Kontynuowanie bez Node.js.
-set "NODE_AVAILABLE=0"
-goto :skip_node_download
-:node_size_ok
+if !SELFZIP_SIZE! GEQ 1000 goto :self_size_ok
+echo  [UWAGA] Pobrany plik generatora PDF jest za maly - !SELFZIP_SIZE! bajtow.
+set "PDF_AVAILABLE=0"
+goto :skip_pdf_download
+:self_size_ok
 
-:: Rozpakuj Node.js
+:: Rozpakuj
 echo        Rozpakowywanie...
-set "NODE_EXTRACT=%TEMP_DIR%\node-extract"
-mkdir "%NODE_EXTRACT%" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%NODE_ZIP%' -DestinationPath '%NODE_EXTRACT%' -Force"
+set "SELF_EXTRACT=%TEMP_DIR%\self-repo"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%SELF_ZIP%' -DestinationPath '%SELF_EXTRACT%' -Force"
 if !ERRORLEVEL! neq 0 (
-    echo  [BLAD] Nie udalo sie rozpakowac Node.js.
-    echo  [UWAGA] Kontynuowanie bez Node.js.
-    set "NODE_AVAILABLE=0"
-    goto :skip_node_download
+    echo  [UWAGA] Nie udalo sie rozpakowac generatora PDF.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
 )
 
-:: Usun stary katalog Node.js (przy reinstalacji)
-if exist "%NODE_DIR%" (
-    rmdir /S /Q "%NODE_DIR%" >nul 2>&1
+:: Znajdz katalog wewnatrz ZIP
+set "SELF_INNER="
+for /d %%D in ("%SELF_EXTRACT%\*") do set "SELF_INNER=%%D"
+if "!SELF_INNER!"=="" (
+    echo  [UWAGA] Nie znaleziono katalogu wewnatrz archiwum.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
 )
 
-:: ZIP zawiera katalog wewnetrzny np. node-v22.13.1-win-x64/ - przenoszimy zawartosc
-mkdir "%NODE_DIR%" >nul 2>&1
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = Get-ChildItem '%NODE_EXTRACT%' -Directory | Select-Object -First 1; if ($d) { Get-ChildItem $d.FullName | Move-Item -Destination '%NODE_DIR%' -Force } else { exit 1 }"
-if !ERRORLEVEL! neq 0 (
-    echo  [BLAD] Nie udalo sie przeniesc plikow Node.js.
-    echo  [UWAGA] Kontynuowanie bez Node.js.
-    set "NODE_AVAILABLE=0"
-    goto :skip_node_download
+:: Kopiuj ksef_pdf.py i fonts/ do INSTALL_DIR
+mkdir "%INSTALL_DIR%" >nul 2>&1
+if exist "!SELF_INNER!\ksef_pdf.py" (
+    copy /Y "!SELF_INNER!\ksef_pdf.py" "%INSTALL_DIR%\" >nul 2>&1
+) else (
+    echo  [UWAGA] Brak ksef_pdf.py w pobranym repozytorium.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
+)
+
+mkdir "%INSTALL_DIR%\fonts" >nul 2>&1
+if exist "!SELF_INNER!\fonts\Inter-Regular.ttf" (
+    copy /Y "!SELF_INNER!\fonts\Inter-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+    copy /Y "!SELF_INNER!\fonts\Inter-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+) else (
+    echo  [UWAGA] Brak fontow w pobranym repozytorium.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
 )
 
 :: Weryfikacja
-if not exist "%NODE_DIR%\node.exe" (
-    echo  [BLAD] node.exe nie znaleziono po rozpakowaniu.
-    echo  [UWAGA] Kontynuowanie bez Node.js.
-    set "NODE_AVAILABLE=0"
-    goto :skip_node_download
+if not exist "%INSTALL_DIR%\ksef_pdf.py" (
+    echo  [UWAGA] ksef_pdf.py nie znaleziono po kopiowaniu.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
+)
+if not exist "%INSTALL_DIR%\fonts\Inter-Regular.ttf" (
+    echo  [UWAGA] Fonty nie znalezione po kopiowaniu.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
 )
 
-echo [%DATE% %TIME%] [3/7] Node.js OK >> "%LOG_FILE%"
-echo        Node.js v%NODE_VER% zainstalowany pomyslnie.
+echo [%DATE% %TIME%] [3/7] Generator PDF OK >> "%LOG_FILE%"
+echo        Generator PDF (ksef_pdf.py + fonts) zainstalowany pomyslnie.
 
-:: Dodaj Node.js do sciezki PATH uzytkownika (uzywa zmiennej %%LOCALAPPDATA%%)
-echo        Dodawanie Node.js do sciezki PATH...
-echo [%DATE% %TIME%] [3/7] Dodawanie do PATH >> "%LOG_FILE%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$k=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment',$true); $c=$k.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames); $e='%%LOCALAPPDATA%%\KSeFCLI\node'; if(-not $c){$k.SetValue('Path',$e,[Microsoft.Win32.RegistryValueKind]::ExpandString)}elseif($c -notlike '*KSeFCLI\node*'){$k.SetValue('Path',($c+';'+$e),[Microsoft.Win32.RegistryValueKind]::ExpandString)};$k.Close()"
-set "PATH_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [3/7] PATH ERRORLEVEL=!PATH_ERR! >> "%LOG_FILE%"
-if !PATH_ERR! equ 0 (
-    echo        Node.js dodany do PATH uzytkownika.
-) else (
-    echo  [UWAGA] Nie udalo sie dodac Node.js do PATH.
-)
-
-:skip_node_download
-:: Jesli Node.js niedostepny, PDF tez niedostepny
-if "%NODE_AVAILABLE%"=="0" set "PDF_AVAILABLE=0"
+:skip_pdf_download
 
 :: ============================================================================
 :: KROK 4/7: Pobieranie repozytoriow z GitHub
@@ -578,82 +546,16 @@ if "!VALID!"=="0" (
 echo [%DATE% %TIME%] [4/7] ksef-cli OK (struktura=!REPO_STRUCTURE!) >> "%LOG_FILE%"
 echo        Pliki ksef-cli skopiowane pomyslnie.
 
-:: --- ksef-pdf-generator ---
-if "%NODE_AVAILABLE%"=="0" (
-    echo.
-    echo        --- ksef-pdf-generator: pominieto - brak Node.js ---
-    goto :skip_pdf_download
+:: --- Patch fetch_invoices.py: output to CWD instead of script dir ---
+echo        Patchowanie fetch_invoices.py (faktury do CWD)...
+set "PATCH_FILE="
+if "!REPO_STRUCTURE!"=="package" set "PATCH_FILE=%CLI_DIR%\ksef\fetch_invoices.py"
+if "!REPO_STRUCTURE!"=="flat" set "PATCH_FILE=%CLI_DIR%\fetch_invoices.py"
+if "!PATCH_FILE!" neq "" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content '!PATCH_FILE!' -Encoding UTF8) -replace 'BASE_DIR = Path\(__file__\)\.parent', 'BASE_DIR = Path.cwd()' | Set-Content '!PATCH_FILE!' -Encoding UTF8"
+    echo [%DATE% %TIME%] [4/7] Patch fetch_invoices.py: BASE_DIR = Path.cwd^(^) >> "%LOG_FILE%"
+    echo        fetch_invoices.py zpatchowany pomyslnie.
 )
-
-echo.
-echo        --- ksef-pdf-generator (%GITHUB_REPO_PDF%) ---
-
-set "PDF_ZIP=%TEMP_DIR%\ksef-pdf.zip"
-set "PDF_BRANCH=main"
-
-set "PDF_URL=https://github.com/%GITHUB_REPO_PDF%/archive/refs/heads/main.zip"
-echo        Proba: branch main...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%PDF_URL%' -OutFile '%PDF_ZIP%' -UseBasicParsing } catch { exit 1 }"
-if !ERRORLEVEL! neq 0 (
-    set "PDF_BRANCH=master"
-    set "PDF_URL=https://github.com/%GITHUB_REPO_PDF%/archive/refs/heads/master.zip"
-    echo        Proba: branch master...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '!PDF_URL!' -OutFile '%PDF_ZIP%' -UseBasicParsing } catch { exit 1 }"
-    if !ERRORLEVEL! neq 0 (
-        echo  [UWAGA] Nie udalo sie pobrac ksef-pdf-generator z GitHub.
-        echo          Generowanie PDF nie bedzie mozliwe.
-        set "PDF_AVAILABLE=0"
-        goto :skip_pdf_download
-    )
-)
-
-:: Sprawdz rozmiar
-for %%F in ("%PDF_ZIP%") do set "PDFZIP_SIZE=%%~zF"
-if "!PDFZIP_SIZE!"=="" (
-    echo  [UWAGA] Pobrany plik ksef-pdf-generator jest pusty.
-    set "PDF_AVAILABLE=0"
-    goto :skip_pdf_download
-)
-if !PDFZIP_SIZE! GEQ 1000 goto :pdf_size_ok
-echo  [UWAGA] Pobrany plik ksef-pdf-generator jest za maly - !PDFZIP_SIZE! bajtow.
-set "PDF_AVAILABLE=0"
-goto :skip_pdf_download
-:pdf_size_ok
-
-:: Rozpakuj
-echo        Rozpakowywanie ksef-pdf-generator...
-set "PDF_EXTRACT=%TEMP_DIR%\pdf-repo"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%PDF_ZIP%' -DestinationPath '%PDF_EXTRACT%' -Force"
-if !ERRORLEVEL! neq 0 (
-    echo  [UWAGA] Nie udalo sie rozpakowac ksef-pdf-generator.
-    set "PDF_AVAILABLE=0"
-    goto :skip_pdf_download
-)
-
-set "PDF_INNER="
-for /d %%D in ("%PDF_EXTRACT%\*") do set "PDF_INNER=%%D"
-if "!PDF_INNER!"=="" (
-    echo  [UWAGA] Nie znaleziono katalogu wewnatrz archiwum ksef-pdf-generator.
-    set "PDF_AVAILABLE=0"
-    goto :skip_pdf_download
-)
-
-mkdir "%PDF_DIR%" >nul 2>&1
-xcopy "!PDF_INNER!\*" "%PDF_DIR%\" /E /Y /Q >nul 2>&1
-
-if not exist "%PDF_DIR%\package.json" (
-    echo  [UWAGA] Brak package.json w ksef-pdf-generator.
-    set "PDF_AVAILABLE=0"
-    goto :skip_pdf_download
-)
-if not exist "%PDF_DIR%\src\cli.ts" (
-    echo  [UWAGA] Brak src/cli.ts w ksef-pdf-generator.
-    echo          Sprawdzanie alternatywnej struktury...
-)
-
-echo        Pliki ksef-pdf-generator skopiowane pomyslnie.
-
-:skip_pdf_download
 
 :: ============================================================================
 :: KROK 5/7: Instalacja zaleznosci
@@ -677,43 +579,37 @@ if not exist "%CLI_DIR%\requirements.txt" (
 
 "%PYTHON_DIR%\python.exe" -m pip install -r "%CLI_DIR%\requirements.txt" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
 set "PIP_INST_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [5/7] pip install ERRORLEVEL=!PIP_INST_ERR! >> "%LOG_FILE%"
+echo [%DATE% %TIME%] [5/7] pip install ksef-cli ERRORLEVEL=!PIP_INST_ERR! >> "%LOG_FILE%"
 if !PIP_INST_ERR! neq 0 (
     echo  [BLAD] Instalacja zaleznosci Python nie powiodla sie.
     echo         Sprawdz polaczenie z internetem.
     goto :error_exit
 )
 
-echo        Zaleznosci Python zainstalowane pomyslnie.
+echo        Zaleznosci ksef-cli zainstalowane pomyslnie.
 
-:: --- Node.js: npm install ---
+:: --- Zaleznosci generatora PDF (fpdf2, defusedxml) ---
 if "%PDF_AVAILABLE%"=="0" (
     echo.
-    echo        --- Zaleznosci Node.js: pominieto ---
-    goto :skip_npm_install
+    echo        --- Zaleznosci PDF: pominieto ---
+    goto :skip_pdf_deps
 )
 
 echo.
-echo        --- Zaleznosci Node.js (npm install) ---
+echo        --- Zaleznosci generatora PDF (pip install) ---
 
-set "PATH=%NODE_DIR%;%PATH%"
-cd /d "%PDF_DIR%"
-call "%NODE_DIR%\npm.cmd" install --no-fund --no-audit >> "%LOG_FILE%" 2>&1
-set "NPM_ERR=!ERRORLEVEL!"
-if !NPM_ERR! neq 0 (
-    echo  [UWAGA] npm install nie powiodl sie.
+"%PYTHON_DIR%\python.exe" -m pip install "fpdf2>=2.8.0" "defusedxml>=0.7.1" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
+set "PDF_PIP_ERR=!ERRORLEVEL!"
+echo [%DATE% %TIME%] [5/7] pip install fpdf2+defusedxml ERRORLEVEL=!PDF_PIP_ERR! >> "%LOG_FILE%"
+if !PDF_PIP_ERR! neq 0 (
+    echo  [UWAGA] Instalacja fpdf2/defusedxml nie powiodla sie.
     echo          Generowanie PDF moze nie dzialac.
-    echo          Pobieranie faktur XML bedzie dzialac normalnie.
+    set "PDF_AVAILABLE=0"
 ) else (
-    echo        Zaleznosci Node.js zainstalowane pomyslnie.
+    echo        Zaleznosci PDF zainstalowane pomyslnie.
 )
 
-if not exist "%PDF_DIR%\node_modules" (
-    echo  [UWAGA] Katalog node_modules nie zostal utworzony.
-    echo          Generowanie PDF moze nie dzialac.
-)
-
-:skip_npm_install
+:skip_pdf_deps
 
 :: ============================================================================
 :: KROK 6/7: Konfiguracja interaktywna
@@ -829,8 +725,8 @@ if "!REPO_STRUCTURE!"=="package" (
             echo from pathlib import Path
             echo from dotenv import load_dotenv
             echo.
-            echo # Zaladuj konfiguracje
-            echo load_dotenv(Path(__file__^).parent / '.env'^)
+            echo # Zaladuj konfiguracje z CWD
+            echo load_dotenv(^)
             echo.
             echo ksef_token = os.environ.get('KSEF_TOKEN'^)
             echo context_nip = os.environ.get('CONTEXT_NIP'^)
@@ -875,6 +771,31 @@ if exist "%CLI_DIR%\faktury" (
         rmdir "%CLI_DIR%\faktury" >nul 2>&1
         echo        Usunieto stary junction: %CLI_DIR%\faktury
     )
+)
+
+:: --- Czyszczenie starego katalogu Node.js i ksef-pdf-generator (z poprzedniej wersji) ---
+if exist "%INSTALL_DIR%\node" (
+    rmdir /S /Q "%INSTALL_DIR%\node" >nul 2>&1
+    echo        Usunieto stary katalog: node
+)
+if exist "%INSTALL_DIR%\ksef-pdf-generator" (
+    rmdir /S /Q "%INSTALL_DIR%\ksef-pdf-generator" >nul 2>&1
+    echo        Usunieto stary katalog: ksef-pdf-generator
+)
+
+:: --- gen_pdf.py (wrapper for ksef_pdf.py) ---
+if "%PDF_AVAILABLE%"=="1" (
+    (
+        echo import sys
+        echo from pathlib import Path
+        echo sys.path.insert(0, str(Path(__file__^).parent^)^)
+        echo from ksef_pdf import generate_pdf
+        echo if len(sys.argv^) != 3:
+        echo     print("Uzycie: gen_pdf.py input.xml output.pdf"^)
+        echo     sys.exit(1^)
+        echo generate_pdf(Path(sys.argv[1]^), Path(sys.argv[2]^)^)
+    ) > "%INSTALL_DIR%\gen_pdf.py"
+    echo        gen_pdf.py utworzony
 )
 
 :: --- Launcher: pobierz-faktury.bat ---
@@ -930,15 +851,14 @@ setlocal DisableDelayedExpansion
     echo ^)
     echo.
     echo :: --- Generowanie PDF ---
-    echo if not exist "%%KSEF%%\node\node.exe" goto :skip_pdf
-    echo if not exist "%%KSEF%%\ksef-pdf-generator\package.json" goto :skip_pdf
+    echo if not exist "%%KSEF%%\gen_pdf.py" goto :skip_pdf
+    echo if not exist "%%KSEF%%\ksef_pdf.py" goto :skip_pdf
     echo.
     echo echo.
     echo echo  Generowanie PDF z pobranych faktur...
     echo echo  ========================================
     echo echo.
     echo.
-    echo set "PATH=%%KSEF%%\node;%%PATH%%"
     echo set "PDF_COUNT=0"
     echo set "PDF_ERR=0"
     echo.
@@ -946,8 +866,7 @@ setlocal DisableDelayedExpansion
     echo     if not exist "%%%%~dpnf.pdf" ^(
     echo         echo   PDF: %%%%~nxf
     echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf ^>^> "%%LOG%%"
-    echo         cd /d "%%KSEF%%\ksef-pdf-generator"
-    echo         call "%%KSEF%%\node\npm.cmd" run cli -- "%%%%f" -o "%%%%~dpnf.pdf" ^>nul 2^>^&1
+    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\gen_pdf.py" "%%%%f" "%%%%~dpnf.pdf" ^>nul 2^>^&1
     echo         if !ERRORLEVEL! equ 0 ^(
     echo             set /a PDF_COUNT+=1
     echo         ^) else ^(
@@ -989,24 +908,16 @@ echo  ============================================================
 echo.
 echo   Katalog instalacji:  %INSTALL_DIR%
 echo   Python:              %PYTHON_DIR%\python.exe
-if "%NODE_AVAILABLE%"=="1" (
-    echo   Node.js:             %NODE_DIR%\node.exe
-)
 echo   ksef-cli:            %CLI_DIR%
 if "%PDF_AVAILABLE%"=="1" (
-    echo   ksef-pdf-generator:  %PDF_DIR%
+    echo   ksef_pdf.py:         %INSTALL_DIR%\ksef_pdf.py
 )
 echo   Folder podatnika:    !NIP_DIR!
 echo   Faktury:             !XML_DIR!
 echo.
 if "%PDF_AVAILABLE%"=="1" goto :summary_pdf_ok
-if "%NODE_AVAILABLE%"=="1" goto :summary_node_only
-echo   [INFO] Generowanie PDF niedostepne - brak Node.js.
+echo   [INFO] Generowanie PDF niedostepne.
 echo          Faktury beda dostepne jako pliki XML.
-goto :summary_pdf_done
-:summary_node_only
-echo   [INFO] Generowanie PDF niedostepne - blad pobierania ksef-pdf-generator.
-echo          Node.js zainstalowany. Faktury dostepne jako XML.
 goto :summary_pdf_done
 :summary_pdf_ok
 echo   Pobrane faktury XML beda automatycznie konwertowane do PDF.
@@ -1049,6 +960,26 @@ set "PS_SUMMARY=%TEMP%\ksef-summary.ps1"
 )
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SUMMARY%"
 del "%PS_SUMMARY%" >nul 2>&1
+
+:: --- Skrot na Pulpicie ---
+echo        Tworzenie skrotu na Pulpicie...
+set "PS_SHORTCUT=%TEMP%\ksef-shortcut.ps1"
+> "%PS_SHORTCUT%" (
+    echo $desktop = [Environment]::GetFolderPath('Desktop'^)
+    echo $ws = New-Object -ComObject WScript.Shell
+    echo $lnk = $ws.CreateShortcut("$desktop\Faktury KSeF - !CONTEXT_NIP!.lnk"^)
+    echo $lnk.TargetPath = '!NIP_DIR!'
+    echo $lnk.Description = 'Folder faktur KSeF dla NIP !CONTEXT_NIP!'
+    echo $lnk.Save(^)
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SHORTCUT%"
+set "SC_ERR=!ERRORLEVEL!"
+del "%PS_SHORTCUT%" >nul 2>&1
+if !SC_ERR! equ 0 (
+    echo        Skrot "Faktury KSeF - !CONTEXT_NIP!" utworzony na Pulpicie.
+) else (
+    echo  [UWAGA] Nie udalo sie utworzyc skrotu na Pulpicie.
+)
 
 echo [%DATE% %TIME%] Instalacja zakonczona pomyslnie >> "%LOG_FILE%"
 goto :normal_exit
