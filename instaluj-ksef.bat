@@ -798,6 +798,32 @@ if "%PDF_AVAILABLE%"=="1" (
     echo        gen_pdf.py utworzony
 )
 
+:: --- Weryfikacja generatora PDF ---
+echo [%DATE% %TIME%] [7/7] PDF_AVAILABLE=%PDF_AVAILABLE% >> "%LOG_FILE%"
+if "%PDF_AVAILABLE%"=="1" (
+    if exist "%INSTALL_DIR%\gen_pdf.py" (
+        echo [%DATE% %TIME%] [7/7] gen_pdf.py OK: %INSTALL_DIR%\gen_pdf.py >> "%LOG_FILE%"
+    ) else (
+        echo [%DATE% %TIME%] [7/7] BRAK gen_pdf.py! >> "%LOG_FILE%"
+        echo  [UWAGA] gen_pdf.py nie zostal utworzony!
+    )
+    if exist "%INSTALL_DIR%\ksef_pdf.py" (
+        echo [%DATE% %TIME%] [7/7] ksef_pdf.py OK: %INSTALL_DIR%\ksef_pdf.py >> "%LOG_FILE%"
+    ) else (
+        echo [%DATE% %TIME%] [7/7] BRAK ksef_pdf.py! >> "%LOG_FILE%"
+        echo  [UWAGA] ksef_pdf.py nie znaleziony w %INSTALL_DIR%!
+    )
+    if exist "%INSTALL_DIR%\fonts\Inter-Regular.ttf" (
+        echo [%DATE% %TIME%] [7/7] fonts OK >> "%LOG_FILE%"
+    ) else (
+        echo [%DATE% %TIME%] [7/7] BRAK fontow! >> "%LOG_FILE%"
+        echo  [UWAGA] Fonty nie znalezione w %INSTALL_DIR%\fonts!
+    )
+) else (
+    echo [%DATE% %TIME%] [7/7] Generator PDF niedostepny >> "%LOG_FILE%"
+    echo  [UWAGA] Generator PDF niedostepny - PDF_AVAILABLE=0
+)
+
 :: --- Launcher: pobierz-faktury.bat ---
 set "LAUNCHER=!NIP_DIR!\pobierz-faktury.bat"
 set "GEN_SCRIPT=!ENTRY_SCRIPT!"
@@ -851,16 +877,29 @@ setlocal DisableDelayedExpansion
     echo ^)
     echo.
     echo :: --- Generowanie PDF ---
-    echo if not exist "%%KSEF%%\gen_pdf.py" goto :skip_pdf
-    echo if not exist "%%KSEF%%\ksef_pdf.py" goto :skip_pdf
+    echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] gen_pdf.py: %%KSEF%%\gen_pdf.py ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] ksef_pdf.py: %%KSEF%%\ksef_pdf.py ^>^> "%%LOG%%"
+    echo if not exist "%%KSEF%%\gen_pdf.py" ^(
+    echo     echo [%%DATE%% %%TIME%%] BRAK gen_pdf.py - pomijam PDF ^>^> "%%LOG%%"
+    echo     echo  [INFO] Brak gen_pdf.py - generowanie PDF pominiete.
+    echo     goto :skip_pdf
+    echo ^)
+    echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
+    echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
+    echo     echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
+    echo     goto :skip_pdf
+    echo ^)
     echo.
     echo echo.
     echo echo  Generowanie PDF z pobranych faktur...
     echo echo  ========================================
     echo echo.
     echo.
+    echo echo [%%DATE%% %%TIME%%] Szukam XML w: %%NIPDIR%%\faktury\ ^>^> "%%LOG%%"
     echo set "PDF_COUNT=0"
     echo set "PDF_ERR=0"
+    echo set "PDF_SKIP=0"
     echo.
     echo for %%%%f in ^("%%NIPDIR%%\faktury\*.xml"^) do ^(
     echo     if not exist "%%%%~dpnf.pdf" ^(
@@ -874,13 +913,17 @@ setlocal DisableDelayedExpansion
     echo             echo   [*] Blad: %%%%~nxf
     echo             echo [%%DATE%% %%TIME%%] BLAD PDF: %%%%~nxf ^>^> "%%LOG%%"
     echo         ^)
+    echo     ^) else ^(
+    echo         set /a PDF_SKIP+=1
     echo     ^)
     echo ^)
     echo.
     echo echo.
     echo if !PDF_COUNT! gtr 0 echo  Wygenerowano !PDF_COUNT! nowych PDF.
     echo if !PDF_ERR! gtr 0 echo  Bledy przy !PDF_ERR! plikach.
-    echo echo [%%DATE%% %%TIME%%] PDF: !PDF_COUNT! nowych, !PDF_ERR! bledow ^>^> "%%LOG%%"
+    echo if !PDF_SKIP! gtr 0 echo  Pominieto !PDF_SKIP! - PDF juz istnieje.
+    echo if !PDF_COUNT!==0 if !PDF_ERR!==0 if !PDF_SKIP!==0 echo  Brak plikow XML w folderze faktury.
+    echo echo [%%DATE%% %%TIME%%] PDF: !PDF_COUNT! nowych, !PDF_ERR! bledow, !PDF_SKIP! istniejacych ^>^> "%%LOG%%"
     echo.
     echo :skip_pdf
     echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
