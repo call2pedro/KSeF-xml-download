@@ -866,7 +866,7 @@ setlocal DisableDelayedExpansion
     echo     if not exist "%%%%~dpnf.pdf" ^(
     echo         echo   PDF: %%%%~nxf
     echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf ^>^> "%%LOG%%"
-    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\gen_pdf.py" "%%%%f" "%%%%~dpnf.pdf" ^>nul 2^>^&1
+    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\gen_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
     echo         if !ERRORLEVEL! equ 0 ^(
     echo             set /a PDF_COUNT+=1
     echo         ^) else ^(
