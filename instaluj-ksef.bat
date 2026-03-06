@@ -398,7 +398,7 @@ if "!SELF_INNER!"=="" (
     goto :skip_pdf_download
 )
 
-:: Kopiuj ksef_pdf.py i fonts/ do INSTALL_DIR
+:: Kopiuj ksef_pdf.py, ksef_client.py i fonts/ do INSTALL_DIR
 mkdir "%INSTALL_DIR%" >nul 2>&1
 if exist "!SELF_INNER!\ksef_pdf.py" (
     copy /Y "!SELF_INNER!\ksef_pdf.py" "%INSTALL_DIR%\" >nul 2>&1
@@ -406,6 +406,12 @@ if exist "!SELF_INNER!\ksef_pdf.py" (
     echo  [UWAGA] Brak ksef_pdf.py w pobranym repozytorium.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
+)
+if exist "!SELF_INNER!\ksef_client.py" (
+    copy /Y "!SELF_INNER!\ksef_client.py" "%INSTALL_DIR%\" >nul 2>&1
+    echo        ksef_client.py skopiowany.
+) else (
+    echo  [UWAGA] Brak ksef_client.py w pobranym repozytorium.
 )
 
 mkdir "%INSTALL_DIR%\fonts" >nul 2>&1
@@ -598,7 +604,7 @@ if "%PDF_AVAILABLE%"=="0" (
 echo.
 echo        --- Zaleznosci generatora PDF (pip install) ---
 
-"%PYTHON_DIR%\python.exe" -m pip install "reportlab>=4.0" "qrcode>=7.4" "defusedxml>=0.7.1" "pillow>=10.0" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
+"%PYTHON_DIR%\python.exe" -m pip install "reportlab>=4.0" "qrcode>=7.4" "defusedxml>=0.7.1" "pillow>=10.0" "lxml>=4.9" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
 set "PDF_PIP_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [5/7] pip install reportlab+qrcode+defusedxml ERRORLEVEL=!PDF_PIP_ERR! >> "%LOG_FILE%"
 if !PDF_PIP_ERR! neq 0 (
@@ -619,14 +625,33 @@ echo.
 echo  [6/7] Konfiguracja KSeF
 echo.
 echo  ============================================================
-echo   Aby uzyskac token KSeF:
-echo   1. Wejdz na https://www.podatki.gov.pl/ksef/
-echo   2. Zaloguj sie profilem zaufanym lub e-dowodem
-echo   3. Wygeneruj token autoryzacyjny
+echo   Wybierz metode uwierzytelniania w KSeF:
+echo.
+echo   [1] Token KSeF
+echo       - Wygenerowany na https://www.podatki.gov.pl/ksef/
+echo       - Logowanie profilem zaufanym lub e-dowodem
+echo.
+echo   [2] Certyfikat (XAdES)
+echo       - Certyfikat uwierzytelniajacy z aplikacji KSeF
+echo       - Wymaga pliku certyfikatu PEM + klucza prywatnego PEM
 echo  ============================================================
 echo.
 
-:: Token KSeF
+:ask_auth_method
+set "AUTH_METHOD="
+set /p "AUTH_METHOD=  Wybierz metode [1/2]: "
+if "!AUTH_METHOD!"=="1" goto :auth_token
+if "!AUTH_METHOD!"=="2" goto :auth_cert
+echo  [!] Wybierz 1 lub 2.
+goto :ask_auth_method
+
+:: ---- Sciezka Token ----
+:auth_token
+set "AUTH_METHOD=token"
+echo.
+echo  --- Uwierzytelnianie tokenem KSeF ---
+echo.
+
 :ask_token
 set "KSEF_TOKEN="
 set /p "KSEF_TOKEN=  Token KSeF: "
@@ -654,7 +679,84 @@ if /i "!TOK_CONFIRM!" neq "T" goto :ask_token
 set "TOKEN_NIP="
 for /f "tokens=2 delims=|" %%a in ("!KSEF_TOKEN!") do set "TOKEN_PART=%%a"
 if "!TOKEN_PART:~0,4!"=="nip-" set "TOKEN_NIP=!TOKEN_PART:~4!"
+goto :ask_nip
 
+:: ---- Sciezka Certyfikat ----
+:auth_cert
+set "AUTH_METHOD=certificate"
+set "KSEF_TOKEN="
+set "TOKEN_NIP="
+echo.
+echo  --- Uwierzytelnianie certyfikatem (XAdES) ---
+echo.
+echo  Potrzebne pliki:
+echo   - Certyfikat uwierzytelniajacy (.pem)
+echo   - Klucz prywatny (.pem)
+echo   - Haslo klucza prywatnego (opcjonalne)
+echo.
+
+:: Sciezka do certyfikatu PEM
+:ask_cert_path
+set "CERT_PATH="
+set /p "CERT_PATH=  Sciezka do certyfikatu PEM: "
+if "!CERT_PATH!"=="" (
+    echo  [!] Sciezka do certyfikatu jest wymagana.
+    goto :ask_cert_path
+)
+if not exist "!CERT_PATH!" (
+    echo  [!] Plik nie znaleziony: !CERT_PATH!
+    goto :ask_cert_path
+)
+echo        Certyfikat: !CERT_PATH!
+
+:: Sciezka do klucza prywatnego PEM
+:ask_key_path
+set "KEY_PATH="
+set /p "KEY_PATH=  Sciezka do klucza prywatnego PEM: "
+if "!KEY_PATH!"=="" (
+    echo  [!] Sciezka do klucza prywatnego jest wymagana.
+    goto :ask_key_path
+)
+if not exist "!KEY_PATH!" (
+    echo  [!] Plik nie znaleziony: !KEY_PATH!
+    goto :ask_key_path
+)
+echo        Klucz prywatny: !KEY_PATH!
+
+:: Haslo klucza prywatnego (opcjonalne, szyfrowane DPAPI)
+set "KEY_PASSWORD="
+set "KEY_PASSWORD_DPAPI="
+echo.
+echo  Haslo klucza prywatnego (Enter = brak hasla):
+set /p "KEY_PASSWORD=  Haslo: "
+if "!KEY_PASSWORD!" neq "" (
+    echo        Szyfrowanie hasla (DPAPI)...
+    echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla DPAPI >> "%LOG_FILE%"
+    for /f "usebackq delims=" %%E in (`powershell -NoProfile -Command "$ss = ConvertTo-SecureString '!KEY_PASSWORD!' -AsPlainText -Force; ConvertFrom-SecureString $ss"`) do set "KEY_PASSWORD_DPAPI=%%E"
+    if "!KEY_PASSWORD_DPAPI!"=="" (
+        echo  [UWAGA] Szyfrowanie DPAPI nie powiodlo sie.
+        echo          Haslo zostanie zapisane jako tekst.
+        set "KEY_PASSWORD_DPAPI=PLAIN:!KEY_PASSWORD!"
+    ) else (
+        echo        Haslo zaszyfrowane pomyslnie.
+    )
+    :: Wyczysc haslo z pamieci
+    set "KEY_PASSWORD="
+)
+
+:: Kopiuj pliki certyfikatu do katalogu instalacji
+echo        Kopiowanie certyfikatu i klucza...
+mkdir "%INSTALL_DIR%\certs" >nul 2>&1
+copy /Y "!CERT_PATH!" "%INSTALL_DIR%\certs\cert.pem" >nul 2>&1
+copy /Y "!KEY_PATH!" "%INSTALL_DIR%\certs\key.pem" >nul 2>&1
+set "CERT_PATH=%INSTALL_DIR%\certs\cert.pem"
+set "KEY_PATH=%INSTALL_DIR%\certs\key.pem"
+echo        Certyfikat i klucz skopiowane do %INSTALL_DIR%\certs\
+echo [%DATE% %TIME%] [6/7] Certyfikat skopiowany >> "%LOG_FILE%"
+
+goto :ask_nip
+
+:: ---- NIP (wspolne dla obu metod) ----
 :ask_nip
 set "CONTEXT_NIP="
 if "!TOKEN_NIP!"=="" goto :nip_manual
@@ -692,6 +794,8 @@ if /i "!NIP_CONFIRM!" neq "T" (
 )
 :nip_len_ok
 
+echo [%DATE% %TIME%] [6/7] AUTH_METHOD=!AUTH_METHOD! NIP=!CONTEXT_NIP! >> "%LOG_FILE%"
+
 :: Folder podatnika (per-NIP)
 set "NIP_DIR=%INSTALL_DIR%\!CONTEXT_NIP!"
 set "XML_DIR=!NIP_DIR!\faktury"
@@ -710,8 +814,16 @@ echo  [7/7] Generowanie plikow...
 
 :: --- Plik .env ---
 (
-    echo KSEF_TOKEN=!KSEF_TOKEN!
+    echo AUTH_METHOD=!AUTH_METHOD!
     echo CONTEXT_NIP=!CONTEXT_NIP!
+    if "!AUTH_METHOD!"=="token" (
+        echo KSEF_TOKEN=!KSEF_TOKEN!
+    )
+    if "!AUTH_METHOD!"=="certificate" (
+        echo CERT_PATH=!CERT_PATH!
+        echo KEY_PATH=!KEY_PATH!
+        if "!KEY_PASSWORD_DPAPI!" neq "" echo KEY_PASSWORD_DPAPI=!KEY_PASSWORD_DPAPI!
+    )
 ) > "!NIP_DIR!\.env"
 echo        .env utworzony
 
@@ -805,9 +917,8 @@ if "%PDF_AVAILABLE%"=="1" (
 
 :: --- Launcher: pobierz-faktury.bat ---
 set "LAUNCHER=!NIP_DIR!\pobierz-faktury.bat"
-set "GEN_SCRIPT=!ENTRY_SCRIPT!"
-set "GEN_ARGS=!ENTRY_ARGS!"
 set "GEN_NIP=!CONTEXT_NIP!"
+set "GEN_AUTH=!AUTH_METHOD!"
 setlocal DisableDelayedExpansion
 (
     echo @echo off
@@ -825,39 +936,65 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] START ^>^> "%%LOG%%"
     echo echo [%%DATE%% %%TIME%%] USER=%%USERNAME%% COMPUTER=%%COMPUTERNAME%% ^>^> "%%LOG%%"
     echo.
-    echo :: Anonimizacja tokenu w logu
-    echo set "TOK_ANON="
-    echo for /f "tokens=1 delims=|" %%%%t in ^('type "%%NIPDIR%%\.env" ^^^| findstr KSEF_TOKEN'^) do set "TOK_RAW=%%%%t"
-    echo if defined TOK_RAW set "TOK_ANON=!TOK_RAW:~0,20!***"
-    echo echo [%%DATE%% %%TIME%%] TOKEN=!TOK_ANON! ^>^> "%%LOG%%"
+    echo :: Zaladuj zmienne z .env do srodowiska
+    echo for /f "usebackq tokens=*" %%%%L in ^("%%NIPDIR%%\.env"^) do set "%%%%L"
+    echo.
+    echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
     echo.
     echo echo.
     echo echo  Pobieranie faktur XML z KSeF...
     echo echo  ========================================
     echo echo.
     echo.
-    echo :: Zaladuj zmienne z .env do srodowiska
-    echo for /f "usebackq tokens=*" %%%%L in ^("%%NIPDIR%%\.env"^) do set "%%%%L"
+    echo :: --- Buduj argumenty ksef_client.py ---
+    echo set "FETCH_ARGS=--nip %GEN_NIP% --output-dir %%NIPDIR%%\faktury"
     echo.
-    echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef-cli... ^>^> "%%LOG%%"
+    echo if "%%AUTH_METHOD%%"=="token" ^(
+    echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
+    echo     set "FETCH_ARGS=!FETCH_ARGS! --token-file %%NIPDIR%%\.token"
+    echo     :: Wyodrebnij token do osobnego pliku (bezpieczniej niz arg CLI^)
+    echo     for /f "tokens=2 delims==" %%%%T in ^('findstr KSEF_TOKEN "%%NIPDIR%%\.env"'^) do echo %%%%T^> "%%NIPDIR%%\.token"
+    echo ^)
+    echo.
+    echo if "%%AUTH_METHOD%%"=="certificate" ^(
+    echo     echo [%%DATE%% %%TIME%%] Metoda: certyfikat ^>^> "%%LOG%%"
+    echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%CERT_PATH%% --key %%KEY_PATH%%"
+    echo     :: Odszyfruj haslo DPAPI jesli jest
+    echo     if defined KEY_PASSWORD_DPAPI ^(
+    echo         if "!KEY_PASSWORD_DPAPI:~0,6!"=="PLAIN:" ^(
+    echo             set "DECRYPTED_PWD=!KEY_PASSWORD_DPAPI:~6!"
+    echo         ^) else ^(
+    echo             for /f "usebackq delims=" %%%%P in ^(`powershell -NoProfile -Command "$ss = '!KEY_PASSWORD_DPAPI!' | ConvertTo-SecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss^); [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr^)"`) do set "DECRYPTED_PWD=%%%%P"
+    echo         ^)
+    echo         if defined DECRYPTED_PWD ^(
+    echo             echo !DECRYPTED_PWD!^> "%%NIPDIR%%\.keypass"
+    echo             set "FETCH_ARGS=!FETCH_ARGS! --password-file %%NIPDIR%%\.keypass"
+    echo         ^)
+    echo     ^)
+    echo ^)
+    echo.
+    echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef_client.py... ^>^> "%%LOG%%"
     echo cd /d "%%NIPDIR%%"
-    echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef-cli\%GEN_SCRIPT%" %GEN_ARGS% 2^>^>"%%LOG%%"
+    echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! 2^>^>"%%LOG%%"
     echo set "FETCH_ERR=!ERRORLEVEL!"
-    echo echo [%%DATE%% %%TIME%%] ksef-cli ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
+    echo.
+    echo :: Usun tymczasowe pliki z poufnymi danymi
+    echo if exist "%%NIPDIR%%\.token" del "%%NIPDIR%%\.token" ^>nul 2^>^&1
+    echo if exist "%%NIPDIR%%\.keypass" del "%%NIPDIR%%\.keypass" ^>nul 2^>^&1
     echo.
     echo if !FETCH_ERR! neq 0 ^(
     echo     echo.
     echo     echo  [BLAD] Pobieranie faktur nie powiodlo sie.
     echo     echo         Szczegoly w logu: %%LOG%%
     echo     echo.
-    echo     echo [%%DATE%% %%TIME%%] BLAD: ksef-cli zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
+    echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
     echo     pause
     echo     exit /b 1
     echo ^)
     echo.
     echo :: --- Generowanie PDF ---
     echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] ksef_pdf.py: %%KSEF%%\ksef_pdf.py ^>^> "%%LOG%%"
     echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
     echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
     echo     echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
@@ -869,7 +1006,6 @@ setlocal DisableDelayedExpansion
     echo echo  ========================================
     echo echo.
     echo.
-    echo echo [%%DATE%% %%TIME%%] Szukam XML w: %%NIPDIR%%\faktury\ ^>^> "%%LOG%%"
     echo set "PDF_COUNT=0"
     echo set "PDF_ERR=0"
     echo set "PDF_SKIP=0"
