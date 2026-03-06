@@ -12,7 +12,7 @@ setlocal EnableDelayedExpansion
 
 :: ============================================================================
 :: Instalator KSeF CLI + PDF Generator dla Windows
-:: Pobiera Python embeddable + ksef-cli + ksef_pdf.py (fpdf2)
+:: Pobiera Python embeddable + ksef-cli + ksef_pdf.py (reportlab)
 :: Konfiguruje i tworzy launcher do pobierania faktur z KSeF
 :: Nie wymaga uprawnien administratora
 :: ============================================================================
@@ -55,7 +55,7 @@ echo  Instalacja do: %INSTALL_DIR%
 echo.
 echo  Projekty:
 echo   ksef-cli           https://github.com/%GITHUB_REPO_CLI%
-echo   ksef_pdf.py        fpdf2 (Python) - generator PDF
+echo   ksef_pdf.py        reportlab (Python) - generator PDF
 echo.
 echo  ------------------------------------------------------------
 echo   WARUNKI KORZYSTANIA
@@ -319,7 +319,7 @@ echo        Python %PYTHON_VER% zainstalowany pomyslnie.
 :: ============================================================================
 echo [%DATE% %TIME%] [3/7] START >> "%LOG_FILE%"
 echo.
-echo  [3/7] Pobieranie generatora PDF (Python/fpdf2)...
+echo  [3/7] Pobieranie generatora PDF (Python/reportlab)...
 
 set "SELF_ZIP=%TEMP_DIR%\ksef-self.zip"
 set "SELF_BRANCH=main"
@@ -409,9 +409,9 @@ if exist "!SELF_INNER!\ksef_pdf.py" (
 )
 
 mkdir "%INSTALL_DIR%\fonts" >nul 2>&1
-if exist "!SELF_INNER!\fonts\Inter-Regular.ttf" (
-    copy /Y "!SELF_INNER!\fonts\Inter-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
-    copy /Y "!SELF_INNER!\fonts\Inter-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+if exist "!SELF_INNER!\fonts\Lato-Regular.ttf" (
+    copy /Y "!SELF_INNER!\fonts\Lato-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+    copy /Y "!SELF_INNER!\fonts\Lato-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
 ) else (
     echo  [UWAGA] Brak fontow w pobranym repozytorium.
     set "PDF_AVAILABLE=0"
@@ -424,7 +424,7 @@ if not exist "%INSTALL_DIR%\ksef_pdf.py" (
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
-if not exist "%INSTALL_DIR%\fonts\Inter-Regular.ttf" (
+if not exist "%INSTALL_DIR%\fonts\Lato-Regular.ttf" (
     echo  [UWAGA] Fonty nie znalezione po kopiowaniu.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
@@ -588,7 +588,7 @@ if !PIP_INST_ERR! neq 0 (
 
 echo        Zaleznosci ksef-cli zainstalowane pomyslnie.
 
-:: --- Zaleznosci generatora PDF (fpdf2, defusedxml) ---
+:: --- Zaleznosci generatora PDF (reportlab, qrcode, defusedxml) ---
 if "%PDF_AVAILABLE%"=="0" (
     echo.
     echo        --- Zaleznosci PDF: pominieto ---
@@ -598,11 +598,11 @@ if "%PDF_AVAILABLE%"=="0" (
 echo.
 echo        --- Zaleznosci generatora PDF (pip install) ---
 
-"%PYTHON_DIR%\python.exe" -m pip install "fpdf2>=2.8.0" "defusedxml>=0.7.1" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
+"%PYTHON_DIR%\python.exe" -m pip install "reportlab>=4.0" "qrcode>=7.4" "defusedxml>=0.7.1" "pillow>=10.0" --no-warn-script-location -q >> "%LOG_FILE%" 2>&1
 set "PDF_PIP_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [5/7] pip install fpdf2+defusedxml ERRORLEVEL=!PDF_PIP_ERR! >> "%LOG_FILE%"
+echo [%DATE% %TIME%] [5/7] pip install reportlab+qrcode+defusedxml ERRORLEVEL=!PDF_PIP_ERR! >> "%LOG_FILE%"
 if !PDF_PIP_ERR! neq 0 (
-    echo  [UWAGA] Instalacja fpdf2/defusedxml nie powiodla sie.
+    echo  [UWAGA] Instalacja reportlab/qrcode/defusedxml nie powiodla sie.
     echo          Generowanie PDF moze nie dzialac.
     set "PDF_AVAILABLE=0"
 ) else (
@@ -792,7 +792,7 @@ if "%PDF_AVAILABLE%"=="1" (
         echo [%DATE% %TIME%] [7/7] BRAK ksef_pdf.py! >> "%LOG_FILE%"
         echo  [UWAGA] ksef_pdf.py nie znaleziony w %INSTALL_DIR%!
     )
-    if exist "%INSTALL_DIR%\fonts\Inter-Regular.ttf" (
+    if exist "%INSTALL_DIR%\fonts\Lato-Regular.ttf" (
         echo [%DATE% %TIME%] [7/7] fonts OK >> "%LOG_FILE%"
     ) else (
         echo [%DATE% %TIME%] [7/7] BRAK fontow! >> "%LOG_FILE%"
