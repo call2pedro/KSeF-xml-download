@@ -633,7 +633,7 @@ echo       - Logowanie profilem zaufanym lub e-dowodem
 echo.
 echo   [2] Certyfikat (XAdES)
 echo       - Certyfikat uwierzytelniajacy z aplikacji KSeF
-echo       - Wymaga pliku certyfikatu PEM + klucza prywatnego PEM
+echo       - Wymaga pliku certyfikatu (.crt) + klucza prywatnego (.key)
 echo  ============================================================
 echo.
 
@@ -690,38 +690,41 @@ echo.
 echo  --- Uwierzytelnianie certyfikatem (XAdES) ---
 echo.
 echo  Potrzebne pliki:
-echo   - Certyfikat uwierzytelniajacy (.pem)
-echo   - Klucz prywatny (.pem)
+echo   - Certyfikat uwierzytelniajacy (.crt)
+echo   - Klucz prywatny (.key)
 echo   - Haslo klucza prywatnego (opcjonalne)
 echo.
+echo  Pliki zostana skopiowane do folderu podatnika:
+echo   {NIP}\certs\auth_cert.crt  i  auth_key.key
+echo.
 
-:: Sciezka do certyfikatu PEM
+:: Sciezka do certyfikatu .crt
 :ask_cert_path
-set "CERT_PATH="
-set /p "CERT_PATH=  Sciezka do certyfikatu PEM: "
-if "!CERT_PATH!"=="" (
+set "CERT_SRC="
+set /p "CERT_SRC=  Sciezka do certyfikatu (.crt): "
+if "!CERT_SRC!"=="" (
     echo  [!] Sciezka do certyfikatu jest wymagana.
     goto :ask_cert_path
 )
-if not exist "!CERT_PATH!" (
-    echo  [!] Plik nie znaleziony: !CERT_PATH!
+if not exist "!CERT_SRC!" (
+    echo  [!] Plik nie znaleziony: !CERT_SRC!
     goto :ask_cert_path
 )
-echo        Certyfikat: !CERT_PATH!
+echo        Certyfikat: !CERT_SRC!
 
-:: Sciezka do klucza prywatnego PEM
+:: Sciezka do klucza prywatnego .key
 :ask_key_path
-set "KEY_PATH="
-set /p "KEY_PATH=  Sciezka do klucza prywatnego PEM: "
-if "!KEY_PATH!"=="" (
+set "KEY_SRC="
+set /p "KEY_SRC=  Sciezka do klucza prywatnego (.key): "
+if "!KEY_SRC!"=="" (
     echo  [!] Sciezka do klucza prywatnego jest wymagana.
     goto :ask_key_path
 )
-if not exist "!KEY_PATH!" (
-    echo  [!] Plik nie znaleziony: !KEY_PATH!
+if not exist "!KEY_SRC!" (
+    echo  [!] Plik nie znaleziony: !KEY_SRC!
     goto :ask_key_path
 )
-echo        Klucz prywatny: !KEY_PATH!
+echo        Klucz prywatny: !KEY_SRC!
 
 :: Haslo klucza prywatnego (opcjonalne, szyfrowane DPAPI)
 set "KEY_PASSWORD="
@@ -744,15 +747,10 @@ if "!KEY_PASSWORD!" neq "" (
     set "KEY_PASSWORD="
 )
 
-:: Kopiuj pliki certyfikatu do katalogu instalacji
-echo        Kopiowanie certyfikatu i klucza...
-mkdir "%INSTALL_DIR%\certs" >nul 2>&1
-copy /Y "!CERT_PATH!" "%INSTALL_DIR%\certs\cert.pem" >nul 2>&1
-copy /Y "!KEY_PATH!" "%INSTALL_DIR%\certs\key.pem" >nul 2>&1
-set "CERT_PATH=%INSTALL_DIR%\certs\cert.pem"
-set "KEY_PATH=%INSTALL_DIR%\certs\key.pem"
-echo        Certyfikat i klucz skopiowane do %INSTALL_DIR%\certs\
-echo [%DATE% %TIME%] [6/7] Certyfikat skopiowany >> "%LOG_FILE%"
+:: Kopiowanie certyfikatu i klucza odbywa sie po ustaleniu NIP (do folderu NIP\certs\)
+:: Zachowaj sciezki zrodlowe do pozniejszego kopiowania
+set "CERT_SRC_SAVED=!CERT_SRC!"
+set "KEY_SRC_SAVED=!KEY_SRC!"
 
 goto :ask_nip
 
@@ -805,6 +803,25 @@ echo.
 echo        Folder podatnika: !NIP_DIR!
 echo        Katalog faktur:   !XML_DIR!
 
+:: Kopiuj certyfikat i klucz do folderu NIP (jesli auth certyfikatem)
+if "!AUTH_METHOD!"=="certificate" (
+    set "CERTS_DIR=!NIP_DIR!\certs"
+    mkdir "!CERTS_DIR!" >nul 2>&1
+    copy /Y "!CERT_SRC_SAVED!" "!CERTS_DIR!\auth_cert.crt" >nul 2>&1
+    copy /Y "!KEY_SRC_SAVED!" "!CERTS_DIR!\auth_key.key" >nul 2>&1
+    if not exist "!CERTS_DIR!\auth_cert.crt" (
+        echo  [BLAD] Nie udalo sie skopiowac certyfikatu.
+        goto :error_exit
+    )
+    if not exist "!CERTS_DIR!\auth_key.key" (
+        echo  [BLAD] Nie udalo sie skopiowac klucza prywatnego.
+        goto :error_exit
+    )
+    echo        Certyfikat: !CERTS_DIR!\auth_cert.crt
+    echo        Klucz:      !CERTS_DIR!\auth_key.key
+    echo [%DATE% %TIME%] [6/7] Certyfikat skopiowany do !CERTS_DIR! >> "%LOG_FILE%"
+)
+
 :: ============================================================================
 :: KROK 7/7: Generowanie plikow konfiguracyjnych
 :: ============================================================================
@@ -820,8 +837,6 @@ echo  [7/7] Generowanie plikow...
         echo KSEF_TOKEN=!KSEF_TOKEN!
     )
     if "!AUTH_METHOD!"=="certificate" (
-        echo CERT_PATH=!CERT_PATH!
-        echo KEY_PATH=!KEY_PATH!
         if "!KEY_PASSWORD_DPAPI!" neq "" echo KEY_PASSWORD_DPAPI=!KEY_PASSWORD_DPAPI!
     )
 ) > "!NIP_DIR!\.env"
@@ -958,7 +973,7 @@ setlocal DisableDelayedExpansion
     echo.
     echo if "%%AUTH_METHOD%%"=="certificate" ^(
     echo     echo [%%DATE%% %%TIME%%] Metoda: certyfikat ^>^> "%%LOG%%"
-    echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%CERT_PATH%% --key %%KEY_PATH%%"
+    echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%NIPDIR%%\certs\auth_cert.crt --key %%NIPDIR%%\certs\auth_key.key"
     echo     :: Odszyfruj haslo DPAPI jesli jest
     echo     if defined KEY_PASSWORD_DPAPI ^(
     echo         if "!KEY_PASSWORD_DPAPI:~0,6!"=="PLAIN:" ^(
