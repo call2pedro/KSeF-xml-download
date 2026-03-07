@@ -808,21 +808,15 @@ if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
 set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
-set "PS_TMPFILE=%TEMP%\ksef_askpw_%RANDOM%.ps1"
 set "NIP_LOG=%INSTALL_DIR%\!CONTEXT_NIP!\install.log"
 
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
 
-:: Skrypt PowerShell do pliku .ps1 (unika problemow z nawiasami w batch)
-echo $p = Read-Host '  Haslo' -AsSecureString > "!PS_TMPFILE!"
-echo $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p) >> "!PS_TMPFILE!"
-echo $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) >> "!PS_TMPFILE!"
-echo [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) >> "!PS_TMPFILE!"
-echo if ($plain.Length -gt 0) { [IO.File]::WriteAllText('%PW_TMPFILE%', $plain) } >> "!PS_TMPFILE!"
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "!PS_TMPFILE!"
-del /f /q "!PS_TMPFILE!" >nul 2>&1
+:: Maskowanie hasla gwiazdkami — PowerShell EncodedCommand (bez nawiasow w batch)
+:: Skrypt PS: Read-Host -AsSecureString, zapis do pliku %KSEF_PW_TMP% jesli niepuste
+set "KSEF_PW_TMP=!PW_TMPFILE!"
+powershell -NoProfile -EncodedCommand JABwACAAPQAgAFIAZQBhAGQALQBIAG8AcwB0ACAAJwAgACAASABhAHMAbABvACcAIAAtAEEAcwBTAGUAYwB1AHIAZQBTAHQAcgBpAG4AZwAKACQAcAB0AHIAIAA9ACAAWwBSAHUAbgB0AGkAbQBlAC4ASQBuAHQAZQByAG8AcABTAGUAcgB2AGkAYwBlAHMALgBNAGEAcgBzAGgAYQBsAF0AOgA6AFMAZQBjAHUAcgBlAFMAdAByAGkAbgBnAFQAbwBCAFMAVABSACgAJABwACkACgAkAHAAbABhAGkAbgAgAD0AIABbAFIAdQBuAHQAaQBtAGUALgBJAG4AdABlAHIAbwBwAFMAZQByAHYAaQBjAGUAcwAuAE0AYQByAHMAaABhAGwAXQA6ADoAUAB0AHIAVABvAFMAdAByAGkAbgBnAEIAUwBUAFIAKAAkAHAAdAByACkACgBbAFIAdQBuAHQAaQBtAGUALgBJAG4AdABlAHIAbwBwAFMAZQByAHYAaQBjAGUAcwAuAE0AYQByAHMAaABhAGwAXQA6ADoAWgBlAHIAbwBGAHIAZQBlAEIAUwBUAFIAKAAkAHAAdAByACkACgBpAGYAIAAoACQAcABsAGEAaQBuAC4ATABlAG4AZwB0AGgAIAAtAGcAdAAgADAAKQAgAHsAIABbAEkATwAuAEYAaQBsAGUAXQA6ADoAVwByAGkAdABlAEEAbABsAFQAZQB4AHQAKAAkAGUAbgB2ADoASwBTAEUARgBfAFAAVwBfAFQATQBQACwAIAAkAHAAbABhAGkAbgApACAAfQAKAA==
 
 echo [%DATE% %TIME%] Pytanie o haslo klucza prywatnego >> "!NIP_LOG!"
 
