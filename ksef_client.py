@@ -7,9 +7,12 @@ Obsługuje:
 - Wyszukiwanie faktur (query metadata)
 - Pobieranie XML faktur
 
-Bazuje na:
-- aiv/ksef-cli (GPL-3.0) — flow tokenowy
-- sstybel/ksef-xml-download (MIT) — flow XAdES
+Źródła:
+- aiv/ksef-cli (GPL-3.0) — flow tokenowy: challenge, szyfrowanie RSA-OAEP,
+  polling statusu autoryzacji, pobieranie faktur z paginacją
+- sstybel/ksef-xml-download (MIT) — flow XAdES: budowa AuthTokenRequest XML,
+  podpis XAdES-BES (enveloped), kanonizacja C14N, struktura ds:Signature
+  z QualifyingProperties/SignedProperties
 
 Autor: IT TASK FORCE Piotr Mierzenski — https://ittf.pl
 """

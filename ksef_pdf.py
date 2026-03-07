@@ -8,10 +8,12 @@ Odbioru) generation in landscape A4.
 Author: IT TASK FORCE Piotr Mierzenski <biuro@ittf.pl> — https://ittf.pl
 Source: https://github.com/call2pedro/KSeF-xml-download
 
-Inspired by ksef-pdf-generator (TypeScript/pdfmake):
+Źródła KSeF:
+  CIRFMF/ksef-pdf-generator (TypeScript/pdfmake) — struktura wizualna faktury,
+  układ sekcji (nagłówek, strony, pozycje, podsumowanie VAT, płatność).
   Original: https://github.com/CIRFMF/ksef-pdf-generator
   Fork:     https://github.com/aiv/ksef-pdf-generator
-This file is a clean-room Python reimplementation using reportlab.
+Reimplementacja w Pythonie z użyciem reportlab.
 """
 
 import argparse

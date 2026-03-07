@@ -53,13 +53,18 @@ echo  ============================================================
 echo.
 echo  Instalacja do: %INSTALL_DIR%
 echo.
-echo  Projekty:
-echo   ksef-cli           https://github.com/%GITHUB_REPO_CLI%
-echo   ksef_pdf.py        reportlab (Python) - generator PDF
+echo  Zrodla:
+echo   ksef-cli           https://github.com/%GITHUB_REPO_CLI%       (GPL-3.0)
+echo   ksef-xml-download  https://github.com/sstybel/ksef-xml-download (MIT)
+echo   KSeF API           https://www.podatki.gov.pl/ksef/
 echo.
 echo  ------------------------------------------------------------
 echo   WARUNKI KORZYSTANIA
 echo  ------------------------------------------------------------
+echo   Oprogramowanie bazuje na projektach open-source:
+echo   - ksef-cli (GPL-3.0) - flow tokenowy KSeF
+echo   - sstybel/ksef-xml-download (MIT) - wzorzec podpisu XAdES
+echo.
 echo   Niniejsze oprogramowanie udostepniane jest w stanie "tak
 echo   jak jest". Autorzy dokladaja wszelkich staran, aby
 echo   zapewnic najwyzsza jakosc i niezawodnosc rozwiazania,
@@ -694,8 +699,20 @@ echo   - Certyfikat uwierzytelniajacy (.crt)
 echo   - Klucz prywatny (.key)
 echo   - Haslo klucza prywatnego (opcjonalne)
 echo.
-echo  Pliki zostana skopiowane do folderu podatnika:
-echo   {NIP}\certs\auth_cert.crt  i  auth_key.key
+echo  Najpierw podaj NIP, potem sciezki do plikow certyfikatu.
+echo  Pliki zostana skopiowane do folderu podatnika.
+echo.
+
+:: Przy certyfikacie najpierw pytamy o NIP, potem o pliki cert
+set "TOKEN_NIP="
+goto :ask_nip_cert
+
+:after_nip_cert
+
+echo.
+echo  Certyfikat zostanie skopiowany do:
+echo   %INSTALL_DIR%\!CONTEXT_NIP!\certs\auth_cert.crt
+echo   %INSTALL_DIR%\!CONTEXT_NIP!\certs\auth_key.key
 echo.
 
 :: Sciezka do certyfikatu .crt
@@ -747,14 +764,40 @@ if "!KEY_PASSWORD!" neq "" (
     set "KEY_PASSWORD="
 )
 
-:: Kopiowanie certyfikatu i klucza odbywa sie po ustaleniu NIP (do folderu NIP\certs\)
-:: Zachowaj sciezki zrodlowe do pozniejszego kopiowania
+:: Zachowaj sciezki zrodlowe do kopiowania po utworzeniu folderu NIP
 set "CERT_SRC_SAVED=!CERT_SRC!"
 set "KEY_SRC_SAVED=!KEY_SRC!"
 
-goto :ask_nip
+goto :nip_ready
 
-:: ---- NIP (wspolne dla obu metod) ----
+:: ---- NIP dla certyfikatu (pytany przed plikami cert) ----
+:ask_nip_cert
+set "CONTEXT_NIP="
+:nip_manual_cert
+set /p "CONTEXT_NIP=  NIP firmy [10 cyfr, bez myslnikow]: "
+if "!CONTEXT_NIP!"=="" (
+    echo  [!] NIP jest wymagany. Sprobuj ponownie.
+    goto :nip_manual_cert
+)
+goto :nip_len_check_cert
+
+:nip_len_check_cert
+set "NIP_LEN=0"
+set "NIP_TMP=!CONTEXT_NIP!"
+:nip_len_loop_cert
+if defined NIP_TMP (
+    set "NIP_TMP=!NIP_TMP:~1!"
+    set /a "NIP_LEN+=1"
+    goto :nip_len_loop_cert
+)
+if !NIP_LEN! equ 10 goto :nip_len_ok_cert
+echo  [!] NIP powinien miec 10 cyfr. Wprowadzono !NIP_LEN! znakow.
+set /p "NIP_CONFIRM=  Kontynuowac mimo to? [T/N]: "
+if /i "!NIP_CONFIRM!" neq "T" goto :nip_manual_cert
+:nip_len_ok_cert
+goto :after_nip_cert
+
+:: ---- NIP dla tokenu (NIP moze byc odczytany z tokenu) ----
 :ask_nip
 set "CONTEXT_NIP="
 if "!TOKEN_NIP!"=="" goto :nip_manual
@@ -791,6 +834,9 @@ if /i "!NIP_CONFIRM!" neq "T" (
     goto :ask_nip
 )
 :nip_len_ok
+
+:: ---- Tworzenie folderu podatnika (wspolne) ----
+:nip_ready
 
 echo [%DATE% %TIME%] [6/7] AUTH_METHOD=!AUTH_METHOD! NIP=!CONTEXT_NIP! >> "%LOG_FILE%"
 
