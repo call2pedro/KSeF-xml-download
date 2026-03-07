@@ -709,10 +709,31 @@ goto :ask_nip_cert
 
 :after_nip_cert
 
+set "CERT_TARGET_DIR=%INSTALL_DIR%\!CONTEXT_NIP!\certs"
+
 echo.
-echo  Certyfikat zostanie skopiowany do:
-echo   %INSTALL_DIR%\!CONTEXT_NIP!\certs\auth_cert.crt
-echo   %INSTALL_DIR%\!CONTEXT_NIP!\certs\auth_key.key
+echo  Folder certyfikatow: !CERT_TARGET_DIR!
+echo   auth_cert.crt  - certyfikat uwierzytelniajacy
+echo   auth_key.key   - klucz prywatny
+echo.
+
+:: Sprawdz czy certyfikat juz istnieje w folderze docelowym
+if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.key" (
+    echo  [INFO] Certyfikat juz istnieje w folderze podatnika:
+    echo         !CERT_TARGET_DIR!\auth_cert.crt
+    echo         !CERT_TARGET_DIR!\auth_key.key
+    echo.
+    set /p "CERT_REPLACE=  Zastapic istniejacy certyfikat? [T/N]: "
+    if /i "!CERT_REPLACE!" neq "T" (
+        echo        Pozostawiono istniejacy certyfikat.
+        set "CERT_SRC_SAVED="
+        set "KEY_SRC_SAVED="
+        goto :nip_ready
+    )
+    echo.
+)
+
+echo  Podaj sciezki do plikow certyfikatu:
 echo.
 
 :: Sciezka do certyfikatu .crt
@@ -849,8 +870,8 @@ echo.
 echo        Folder podatnika: !NIP_DIR!
 echo        Katalog faktur:   !XML_DIR!
 
-:: Kopiuj certyfikat i klucz do folderu NIP (jesli auth certyfikatem)
-if "!AUTH_METHOD!"=="certificate" (
+:: Kopiuj certyfikat i klucz do folderu NIP (jesli auth certyfikatem i podano nowe pliki)
+if "!AUTH_METHOD!"=="certificate" if "!CERT_SRC_SAVED!" neq "" (
     set "CERTS_DIR=!NIP_DIR!\certs"
     mkdir "!CERTS_DIR!" >nul 2>&1
     copy /Y "!CERT_SRC_SAVED!" "!CERTS_DIR!\auth_cert.crt" >nul 2>&1
