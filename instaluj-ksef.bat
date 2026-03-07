@@ -711,6 +711,10 @@ goto :ask_nip_cert
 
 set "CERT_TARGET_DIR=%INSTALL_DIR%\!CONTEXT_NIP!\certs"
 
+:: Utworz folder NIP i certs aby uzytkownik mogl skopiowac pliki
+mkdir "%INSTALL_DIR%\!CONTEXT_NIP!" >nul 2>&1
+mkdir "!CERT_TARGET_DIR!" >nul 2>&1
+
 echo.
 echo  Folder certyfikatow: %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
 echo   auth_cert.crt  - certyfikat uwierzytelniajacy
