@@ -476,6 +476,13 @@ def parse_ksef_xml(xml_path: Path) -> dict:
         data["brutto_total"] = _text(fa, "ksef:P_15", ns)  # P_15
         data["rodzaj_faktury"] = _text(fa, "ksef:RodzajFaktury", ns)
         data["fp"] = _text(fa, "ksef:FP", ns)
+        data["tp"] = _text(fa, "ksef:TP", ns)
+
+        # Dane faktury korygowanej (korekta)
+        data["korekta_nr"] = _text(fa, "ksef:P_3A", ns)
+        data["korekta_data"] = _text(fa, "ksef:P_3B", ns)
+        data["korekta_przyczyna"] = _text(fa, "ksef:P_3C", ns)
+        data["korekta_nr_ksef"] = _text(fa, "ksef:P_3L", ns)
 
         # VAT summary fields P_13_x (netto) and P_14_x (VAT) per rate
         vat_summary = []
@@ -775,6 +782,7 @@ class InvoicePDF:
         story.extend(self._render_header())
         story.extend(self._render_parties())
         story.extend(self._render_details())
+        story.extend(self._render_korekta())
         story.extend(self._render_line_items())
         story.extend(self._render_vat_summary())
         story.extend(self._render_annotations())
@@ -1007,6 +1015,39 @@ class InvoicePDF:
         elements.append(Spacer(1, 2 * mm))
         return elements
 
+    def _render_korekta(self) -> list:
+        """Render corrected invoice details (for KOR/KOR_ZAL/KOR_ROZ)."""
+        d = self.data
+        rodzaj = d.get("rodzaj_faktury", "")
+        if not rodzaj.startswith("KOR"):
+            return []
+
+        has_data = any(d.get(k) for k in [
+            "korekta_nr", "korekta_data", "korekta_przyczyna", "korekta_nr_ksef"
+        ])
+        if not has_data:
+            return []
+
+        elements: list = [
+            self._section_header("Dane faktury korygowanej"),
+            Spacer(1, 1 * mm),
+        ]
+
+        fields = [
+            ("Numer faktury korygowanej:", d.get("korekta_nr")),
+            ("Data faktury korygowanej:", d.get("korekta_data")),
+            ("Numer KSeF korygowanej:", d.get("korekta_nr_ksef")),
+            ("Przyczyna korekty:", d.get("korekta_przyczyna")),
+        ]
+        for label, value in fields:
+            if value:
+                elements.append(
+                    Paragraph(f"<b>{label}</b> {value}", self.styles["value"])
+                )
+
+        elements.append(Spacer(1, 2 * mm))
+        return elements
+
     def _render_line_items(self) -> list:
         """Render the invoice line items table with flexible Paragraph rows."""
         wiersze = self.data.get("wiersze", [])
@@ -1014,6 +1055,10 @@ class InvoicePDF:
             return []
 
         elements: list = [self._section_header("Pozycje faktury"), Spacer(1, 1 * mm)]
+
+        # Check if any row has P_11A (foreign currency net value)
+        has_p11a = any(row.get("wartosc_netto_waluta") for row in wiersze)
+        waluta = self.data.get("waluta", "")
 
         # Column headers and widths (in mm, None = flexible)
         headers = [
@@ -1035,6 +1080,16 @@ class InvoicePDF:
             38,    # Wartość netto
         ]
 
+        if has_p11a:
+            p11a_label = f"Netto {waluta}" if waluta and waluta != "PLN" else "Netto wal. obca"
+            headers.append(p11a_label)
+            # Shrink fixed columns to fit extra column within page width
+            col_widths_mm[3] = 18   # Ilość: 22 -> 18
+            col_widths_mm[4] = 30   # Cena netto: 35 -> 30
+            col_widths_mm[5] = 18   # Stawka VAT: 22 -> 18
+            col_widths_mm[6] = 32   # Wartość netto: 38 -> 32
+            col_widths_mm.append(32) # Netto wal. obca
+
         # Compute flexible Nazwa column width
         fixed_total_mm = sum(w for w in col_widths_mm if w is not None)
         content_width_mm = self.content_width / mm
@@ -1052,10 +1107,8 @@ class InvoicePDF:
             if stawka_str and stawka_str not in ("zw", "zw.", "np", "oo"):
                 stawka_str = f"{stawka_str}%"
 
-            data_rows.append(
-                [
+            row_cells = [
                     Paragraph(row.get("nr") or "", self.styles["table_cell_center"]),
-                    # No truncation — Paragraph handles wrapping
                     Paragraph(row.get("nazwa") or "", self.styles["table_cell"]),
                     Paragraph(
                         row.get("jednostka") or "", self.styles["table_cell_center"]
@@ -1071,8 +1124,15 @@ class InvoicePDF:
                         _fmt(row.get("wartosc_netto")),
                         self.styles["table_cell_right"],
                     ),
-                ]
-            )
+            ]
+            if has_p11a:
+                row_cells.append(
+                    Paragraph(
+                        _fmt(row.get("wartosc_netto_waluta")),
+                        self.styles["table_cell_right"],
+                    )
+                )
+            data_rows.append(row_cells)
 
         # Build alternating row backgrounds
         row_styles = [
@@ -1194,23 +1254,38 @@ class InvoicePDF:
         return elements
 
     def _render_annotations(self) -> list:
-        """Render invoice annotations (P_16–P_23)."""
+        """Render invoice annotations (P_16–P_23, FP, TP)."""
         adnotacje = self.data.get("adnotacje", {})
-        if not adnotacje:
-            return []
+        d = self.data
+        items: list = []
 
-        elements: list = [self._section_header("Adnotacje"), Spacer(1, 1 * mm)]
+        # Adnotacje z sekcji Adnotacje
         labels = {
-            "P_16": "Metoda kasowa",
-            "P_17": "Samofakturowanie",
-            "P_18": "Odwrotne obciazenie",
-            "P_18A": "Procedura marzy",
-            "P_23": "Faktura VAT MP",
+            "P_16": "Odwrotne obciazenie",
+            "P_17": "Mechanizm podzielonej platnosci",
+            "P_18": "Samofakturowanie",
+            "P_18A": "Faktura wystawiona na podstawie art. 106e ust. 5 pkt 3",
+            "P_23": "Procedura szczegolna VAT-OSS",
         }
         for field, label in labels.items():
             val = adnotacje.get(field)
             if val and val == "1":
-                elements.append(Paragraph(f"* {label}", self.styles["value"]))
+                items.append(f"* {label}")
+
+        # FP — Faktura do paragonu fiskalnego
+        if d.get("fp") == "1":
+            items.append("* Faktura do paragonu fiskalnego")
+
+        # TP — Transakcja miedzy podmiotami powiazanymi
+        if d.get("tp") == "1":
+            items.append("* Transakcja miedzy podmiotami powiazanymi")
+
+        if not items:
+            return []
+
+        elements: list = [self._section_header("Adnotacje"), Spacer(1, 1 * mm)]
+        for item in items:
+            elements.append(Paragraph(item, self.styles["value"]))
 
         elements.append(Spacer(1, 2 * mm))
         return elements
@@ -1697,6 +1772,8 @@ def generate_pdf(xml_path: Path, pdf_path: Path) -> None:
         xml_path: Path to the KSeF XML invoice file.
         pdf_path: Destination path for the PDF file.
     """
+    xml_path = Path(xml_path)
+    pdf_path = Path(pdf_path)
     data = parse_ksef_xml(xml_path)
     generate_invoice_pdf(data, pdf_path, xml_path=xml_path)
 
