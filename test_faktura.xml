@@ -32,6 +32,33 @@
       <AdresL2>31-234 Kraków</AdresL2>
     </Adres>
   </Podmiot2>
+  <Podmiot3>
+    <DaneIdentyfikacyjne>
+      <NIP>5551234567</NIP>
+      <Nazwa>Faktor Finansowy Sp. z o.o.</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Faktoringowa 10</AdresL1>
+      <AdresL2>00-100 Warszawa</AdresL2>
+    </Adres>
+    <Rola>1</Rola>
+  </Podmiot3>
+  <Podmiot3>
+    <DaneIdentyfikacyjne>
+      <NIP>6662345678</NIP>
+      <Nazwa>Odbiorca Towarow Jan Nowak</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ul. Odbiorcza 5/2</AdresL1>
+      <AdresL2>30-200 Krakow</AdresL2>
+    </Adres>
+    <DaneKontaktowe>
+      <Email>odbiorca@test.pl</Email>
+    </DaneKontaktowe>
+    <Rola>2</Rola>
+  </Podmiot3>
   <Fa>
     <KodWaluty>PLN</KodWaluty>
     <P_1>2025-01-15</P_1>

@@ -294,6 +294,28 @@ def _text(element, path, ns, default=None):
     return default
 
 
+# --- Role podmiotów wg schematu FA(2) XSD (CRD 2023/06/29/12648) ---
+
+ROLA_PODMIOT3 = {
+    "1": "Faktor",
+    "2": "Odbiorca",
+    "3": "Podmiot pierwotny",
+    "4": "Dodatkowy nabywca",
+    "5": "Wystawca faktury",
+    "6": "Dokonujacy platnosci",
+    "7": "JST - wystawca",
+    "8": "JST - odbiorca",
+    "9": "Czlonek grupy VAT - wystawca",
+    "10": "Czlonek grupy VAT - odbiorca",
+}
+
+ROLA_PODMIOTU_UPOWAZNIONEGO = {
+    "1": "Organ egzekucyjny",
+    "2": "Komornik sadowy",
+    "3": "Przedstawiciel podatkowy",
+}
+
+
 def _parse_podmiot(element, ns):
     """Parse Podmiot1 or Podmiot2 section."""
     if element is None:
@@ -322,6 +344,49 @@ def _parse_podmiot(element, ns):
 
     # NrKlienta (only on Podmiot2)
     data["nr_klienta"] = _text(element, "ksef:NrKlienta", ns)
+
+    return data
+
+
+def _parse_podmiot3(element, ns):
+    """Parse Podmiot3 section (third party with role)."""
+    if element is None:
+        return {}
+
+    data = _parse_podmiot(element, ns)
+
+    # Rola (choice: Rola OR RolaInna+OpisRoli)
+    rola_kod = _text(element, "ksef:Rola", ns)
+    if rola_kod:
+        data["rola_kod"] = rola_kod
+        data["rola"] = ROLA_PODMIOT3.get(rola_kod, f"Rola {rola_kod}")
+    else:
+        opis = _text(element, "ksef:OpisRoli", ns)
+        if opis:
+            data["rola"] = opis
+            data["rola_kod"] = "inna"
+
+    # IDNabywcy, NrEORI, Udzial
+    data["id_nabywcy"] = _text(element, "ksef:IDNabywcy", ns)
+    data["nr_eori"] = _text(element, "ksef:NrEORI", ns)
+    data["udzial"] = _text(element, "ksef:Udzial", ns)
+
+    return data
+
+
+def _parse_podmiot_upowazniony(element, ns):
+    """Parse PodmiotUpowazniony section."""
+    if element is None:
+        return {}
+
+    data = _parse_podmiot(element, ns)
+
+    rola_kod = _text(element, "ksef:RolaPU", ns)
+    if rola_kod:
+        data["rola_kod"] = rola_kod
+        data["rola"] = ROLA_PODMIOTU_UPOWAZNIONEGO.get(rola_kod, f"Rola {rola_kod}")
+
+    data["nr_eori"] = _text(element, "ksef:NrEORI", ns)
 
     return data
 
@@ -389,6 +454,16 @@ def parse_ksef_xml(xml_path: Path) -> dict:
 
     # --- Podmiot2 (Nabywca) ---
     data["nabywca"] = _parse_podmiot(_find(root, "ksef:Podmiot2", ns), ns)
+
+    # --- Podmiot3 (inne podmioty, 0..100) ---
+    podmioty3 = root.findall("ksef:Podmiot3", ns)
+    if podmioty3:
+        data["podmioty3"] = [_parse_podmiot3(p, ns) for p in podmioty3]
+
+    # --- PodmiotUpowazniony (opcjonalny) ---
+    pu = _find(root, "ksef:PodmiotUpowazniony", ns)
+    if pu is not None:
+        data["podmiot_upowazniony"] = _parse_podmiot_upowazniony(pu, ns)
 
     # --- Fa ---
     fa = _find(root, "ksef:Fa", ns)
@@ -830,7 +905,85 @@ class InvoicePDF:
             )
         )
 
-        return [t, Spacer(1, 3 * mm), self._line(), Spacer(1, 2 * mm)]
+        result = [t, Spacer(1, 3 * mm)]
+
+        # --- Podmiot3 (inne podmioty) ---
+        podmioty3 = self.data.get("podmioty3", [])
+        if podmioty3:
+            result.append(self._render_podmioty3(podmioty3))
+            result.append(Spacer(1, 2 * mm))
+
+        # --- PodmiotUpowazniony ---
+        pu = self.data.get("podmiot_upowazniony")
+        if pu:
+            result.append(self._render_podmiot_upowazniony(pu))
+            result.append(Spacer(1, 2 * mm))
+
+        result.extend([self._line(), Spacer(1, 2 * mm)])
+        return result
+
+    def _render_podmioty3(self, podmioty3: list) -> Table:
+        """Render Podmiot3 entries (other parties) in a table layout."""
+        col_width = self.content_width / 2 - 5 * mm
+        rows = []
+
+        for i in range(0, len(podmioty3), 2):
+            left = self._party_block_with_role(podmioty3[i])
+            right = (
+                self._party_block_with_role(podmioty3[i + 1])
+                if i + 1 < len(podmioty3)
+                else []
+            )
+            rows.append([left, right])
+
+        t = Table(rows, colWidths=[col_width, col_width], hAlign="LEFT")
+        t.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        return t
+
+    def _render_podmiot_upowazniony(self, pu: dict) -> Table:
+        """Render PodmiotUpowazniony section."""
+        col_width = self.content_width / 2 - 5 * mm
+        left = self._party_block_with_role(pu, label_prefix="PODMIOT UPOWAZNIONY")
+        t = Table([[left, []]], colWidths=[col_width, col_width], hAlign="LEFT")
+        t.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+        return t
+
+    def _party_block_with_role(self, party: dict, label_prefix: str = "") -> list:
+        """Build party block with role label (for Podmiot3 / PodmiotUpowazniony)."""
+        rola = party.get("rola", "")
+        if label_prefix:
+            label = f"{label_prefix} — {rola}" if rola else label_prefix
+        else:
+            label = rola.upper() if rola else "PODMIOT"
+
+        parts = self._party_block(label, party)
+
+        if party.get("udzial"):
+            parts.append(
+                Paragraph(f"Udział: {party['udzial']}%", self.styles["normal"])
+            )
+        if party.get("nr_eori"):
+            parts.append(
+                Paragraph(f"EORI: {party['nr_eori']}", self.styles["normal"])
+            )
+        return parts
 
     def _render_details(self) -> list:
         """Render issue date, place, delivery date, currency."""
