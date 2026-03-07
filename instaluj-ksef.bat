@@ -859,6 +859,7 @@ set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
 
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
+echo  (haslo zostanie zaszyfrowane AES-256 i zapisane lokalnie)
 
 :: Maskowanie hasla gwiazdkami — PowerShell EncodedCommand (bez nawiasow w batch)
 :: Skrypt PS: Read-Host -AsSecureString, zapis do pliku %KSEF_PW_TMP% jesli niepuste
