@@ -808,13 +808,18 @@ set "KEY_PASSWORD_ENC="
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
 :: Maskowanie hasla gwiazdkami przez PowerShell
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Read-Host '  Haslo' -AsSecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p); [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)"`) do set "KEY_PASSWORD=%%P"
-if "!KEY_PASSWORD!" neq "" (
+:: Haslo zapisywane do pliku tymczasowego aby uniknac problemow ze znakami specjalnymi w batch
+set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
+powershell -NoProfile -Command "$p = Read-Host '  Haslo' -AsSecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p); $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr); [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr); if ($plain.Length -gt 0) { [IO.File]::WriteAllText('%PW_TMPFILE%', $plain) }"
+if exist "!PW_TMPFILE!" (
     echo        Szyfrowanie hasla (AES-256)...
     echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla AES-256-GCM >> "%LOG_FILE%"
     set "AES_KEYFILE=%INSTALL_DIR%\!CONTEXT_NIP!\certs\.aes_key"
     mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
-    for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password "!KEY_PASSWORD!" --generate-keyfile "!AES_KEYFILE!" 2^>nul`) do set "KEY_PASSWORD_ENC=%%E"
+    :: Szyfrowanie — Python czyta haslo z pliku tymczasowego
+    for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>nul`) do set "KEY_PASSWORD_ENC=%%E"
+    :: Usun plik tymczasowy z haslem
+    del /f /q "!PW_TMPFILE!" >nul 2>&1
     if "!KEY_PASSWORD_ENC!"=="" (
         echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
         echo         Sprawdz czy Python i ksef_client.py sa zainstalowane.
@@ -822,8 +827,6 @@ if "!KEY_PASSWORD!" neq "" (
     )
     echo        Haslo zaszyfrowane pomyslnie.
     echo        Klucz AES: !AES_KEYFILE!
-    :: Wyczysc haslo z pamieci
-    set "KEY_PASSWORD="
 )
 
 :: Zachowaj sciezki zrodlowe do kopiowania po utworzeniu folderu NIP

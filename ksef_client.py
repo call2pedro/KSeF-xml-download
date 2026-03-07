@@ -682,20 +682,29 @@ def _cli() -> None:
     # Tryb pomocniczy: szyfrowanie hasła
     parser.add_argument("--encrypt-password", metavar="PASSWORD",
                         help="Zaszyfruj hasło i wypisz na stdout (tryb pomocniczy)")
+    parser.add_argument("--encrypt-password-file", metavar="PATH",
+                        help="Jak --encrypt-password ale czyta hasło z pliku (bezpieczniejsze)")
     parser.add_argument("--generate-keyfile", metavar="PATH",
                         help="Wygeneruj klucz AES-256 do pliku (dla --encrypt-password)")
 
     args = parser.parse_args()
 
     # Tryb szyfrowania hasła (helper dla instalatora)
-    if args.encrypt_password:
+    password_to_encrypt = args.encrypt_password
+    if not password_to_encrypt and args.encrypt_password_file:
+        try:
+            password_to_encrypt = Path(args.encrypt_password_file).read_text(encoding="utf-8").strip()
+        except Exception as e:
+            print(f"BLAD: Nie mozna odczytac pliku z haslem: {e}", file=sys.stderr)
+            sys.exit(1)
+    if password_to_encrypt:
         if not args.generate_keyfile and not args.password_keyfile:
             print("BLAD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
             sys.exit(1)
         keyfile = args.generate_keyfile or args.password_keyfile
         if args.generate_keyfile:
             generate_aes_key(keyfile)
-        encrypted = encrypt_password(args.encrypt_password, keyfile)
+        encrypted = encrypt_password(password_to_encrypt, keyfile)
         print(encrypted)
         sys.exit(0)
 
