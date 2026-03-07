@@ -712,8 +712,16 @@ goto :ask_nip_cert
 set "CERT_TARGET_DIR=%INSTALL_DIR%\!CONTEXT_NIP!\certs"
 
 :: Utworz folder NIP i certs aby uzytkownik mogl skopiowac pliki
-mkdir "!INSTALL_DIR!\!CONTEXT_NIP!" >nul 2>&1
-mkdir "!INSTALL_DIR!\!CONTEXT_NIP!\certs" >nul 2>&1
+echo [%DATE% %TIME%] Tworzenie folderu: "!INSTALL_DIR!\!CONTEXT_NIP!\certs" >> "%LOG_FILE%"
+if not exist "!INSTALL_DIR!" mkdir "!INSTALL_DIR!"
+if not exist "!INSTALL_DIR!\!CONTEXT_NIP!" mkdir "!INSTALL_DIR!\!CONTEXT_NIP!"
+if not exist "!INSTALL_DIR!\!CONTEXT_NIP!\certs" mkdir "!INSTALL_DIR!\!CONTEXT_NIP!\certs"
+if exist "!INSTALL_DIR!\!CONTEXT_NIP!\certs" (
+    echo [%DATE% %TIME%] Folder certs utworzony OK >> "%LOG_FILE%"
+) else (
+    echo  [!] Nie udalo sie utworzyc folderu: !INSTALL_DIR!\!CONTEXT_NIP!\certs
+    echo [%DATE% %TIME%] BLAD: mkdir certs nie powiodl sie >> "%LOG_FILE%"
+)
 
 echo.
 echo  Folder certyfikatow: %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
