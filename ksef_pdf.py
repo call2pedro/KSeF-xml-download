@@ -772,17 +772,9 @@ class InvoicePDF:
         elements: list = []
         d = self.data
 
-        # KSeF brand with red 'e'
-        brand = Paragraph(
-            'Krajowy System <font color="red"><b>e</b></font><b>-Faktur</b>',
-            self.styles["ksef_brand"],
-        )
-        elements.append(brand)
-
         # Invoice type label
         rodzaj = d.get("rodzaj_faktury", "VAT")
         typ_label = RODZAJ_FAKTURY_LABELS.get(rodzaj, "Faktura")
-        elements.append(Spacer(1, 2 * mm))
         elements.append(Paragraph(typ_label, self.styles["title"]))
 
         # Invoice number
@@ -1345,12 +1337,6 @@ class UpoPDF:
         """Render UPO header: brand and document title."""
         elements: list = []
 
-        brand = Paragraph(
-            'Krajowy System <font color="red"><b>e</b></font><b>-Faktur</b>',
-            self.styles["ksef_brand"],
-        )
-        elements.append(brand)
-        elements.append(Spacer(1, 4 * mm))
         elements.append(
             Paragraph(
                 "Urzedowe poswiadczenie odbioru dokumentu elektronicznego KSeF",
