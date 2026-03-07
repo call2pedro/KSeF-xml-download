@@ -858,11 +858,22 @@ if not exist "!PW_TMPFILE!" (
     goto :error_exit
 )
 
-:: Szyfrowanie — Python czyta haslo z pliku tymczasowego
-for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>"!PW_ERR!"`) do set "KEY_PASSWORD_ENC=%%E"
+:: Szyfrowanie — Python czyta haslo z pliku tymczasowego, wynik do pliku
+set "PW_OUT=%TEMP%\ksef_pw_out_%RANDOM%.tmp"
+echo [%DATE% %TIME%] Uruchamianie: "%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" >> "%LOG_FILE%"
+"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" > "!PW_OUT!" 2> "!PW_ERR!"
+set "PY_EXIT=!ERRORLEVEL!"
+echo [%DATE% %TIME%] Python ERRORLEVEL=!PY_EXIT! >> "%LOG_FILE%"
 
 :: Usun plik tymczasowy z haslem
 del /f /q "!PW_TMPFILE!" >nul 2>&1
+
+:: Odczytaj zaszyfrowane haslo z pliku wyjsciowego
+set "KEY_PASSWORD_ENC="
+if exist "!PW_OUT!" (
+    set /p KEY_PASSWORD_ENC=<"!PW_OUT!"
+    del /f /q "!PW_OUT!" >nul 2>&1
+)
 
 if "!KEY_PASSWORD_ENC!"=="" (
     echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
