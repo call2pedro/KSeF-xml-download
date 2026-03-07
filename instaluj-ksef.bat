@@ -1133,12 +1133,51 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
     echo.
     echo echo.
-    echo echo  Pobieranie faktur XML z KSeF...
+    echo echo  Pobieranie faktur XML z KSeF
     echo echo  ========================================
+    echo echo.
+    echo echo  Wybierz okres pobierania:
+    echo echo.
+    echo echo    [1] Ostatnie 30 dni  (domyslnie - auto za 10s^)
+    echo echo    [2] Biezacy miesiac
+    echo echo    [3] Poprzedni miesiac
+    echo echo    [4] Biezacy kwartal
+    echo echo    [5] Biezacy rok
+    echo echo    [6] Wszystko (365 dni^)
+    echo echo.
+    echo choice /c 123456 /t 10 /d 1 /n /m "  Wybierz [1-6]: "
+    echo set "PERIOD_CHOICE=%%ERRORLEVEL%%"
+    echo.
+    echo :: Oblicz --days na podstawie wyboru
+    echo set "DAYS=30"
+    echo if "%%PERIOD_CHOICE%%"=="1" set "DAYS=30"
+    echo if "%%PERIOD_CHOICE%%"=="2" (
+    echo     :: Biezacy miesiac: dni od 1-go do dzis
+    echo     for /f "tokens=1-3 delims=/" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
+    echo     for /f "tokens=1-3 delims=." %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
+    echo     for /f "tokens=1-3 delims=-" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%c"
+    echo     if not defined TODAY_DAY set "TODAY_DAY=30"
+    echo     set "DAYS=%%TODAY_DAY%%"
+    echo ^)
+    echo if "%%PERIOD_CHOICE%%"=="3" (
+    echo     :: Poprzedni miesiac: 60 dni wstecz
+    echo     set "DAYS=60"
+    echo ^)
+    echo if "%%PERIOD_CHOICE%%"=="4" (
+    echo     :: Biezacy kwartal: 90 dni
+    echo     set "DAYS=90"
+    echo ^)
+    echo if "%%PERIOD_CHOICE%%"=="5" (
+    echo     :: Biezacy rok: 365 dni
+    echo     set "DAYS=365"
+    echo ^)
+    echo if "%%PERIOD_CHOICE%%"=="6" set "DAYS=365"
+    echo.
+    echo echo  Okres: %%DAYS%% dni wstecz
     echo echo.
     echo.
     echo :: --- Buduj argumenty ksef_client.py ---
-    echo set "FETCH_ARGS=--nip %GEN_NIP% --output-dir %%NIPDIR%%\faktury"
+    echo set "FETCH_ARGS=--nip %GEN_NIP% --output-dir %%NIPDIR%%\faktury --days %%DAYS%%"
     echo.
     echo if "%%AUTH_METHOD%%"=="token" ^(
     echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
