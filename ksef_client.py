@@ -88,7 +88,7 @@ class KSeFClient:
         logger: logging.Logger = None,
     ):
         if environment not in KSEF_URLS:
-            raise ValueError(f"Nieznane środowisko: {environment}. Dostępne: {list(KSEF_URLS.keys())}")
+            raise ValueError(f"Nieznane srodowisko: {environment}. Dostepne: {list(KSEF_URLS.keys())}")
 
         self.nip = nip
         self.environment = environment
@@ -142,9 +142,9 @@ class KSeFClient:
             elif method == "DELETE":
                 resp = self._session.delete(url, headers=headers, timeout=self.timeout)
             else:
-                raise ValueError(f"Nieobsługiwana metoda HTTP: {method}")
+                raise ValueError(f"Nieobslugiwana metoda HTTP: {method}")
         except requests.RequestException as exc:
-            raise KSeFError(f"Błąd połączenia z KSeF: {exc}")
+            raise KSeFError(f"Blad polaczenia z KSeF: {exc}")
 
         if resp.status_code >= 400:
             msg = f"KSeF API HTTP {resp.status_code}"
@@ -203,9 +203,9 @@ class KSeFClient:
                 continue
 
             desc = status.get("description", "Nieznany błąd")
-            raise KSeFError(f"Błąd autoryzacji: kod {code} — {desc}", response_data=resp)
+            raise KSeFError(f"Blad autoryzacji: kod {code} - {desc}", response_data=resp)
 
-        raise KSeFError("Timeout oczekiwania na autoryzację")
+        raise KSeFError("Timeout oczekiwania na autoryzacje")
 
     def _redeem_token(self) -> None:
         resp = self._request("POST", "/auth/token/redeem")
@@ -272,7 +272,7 @@ class KSeFClient:
 
         certs = resp if isinstance(resp, list) else resp.get("certificates", [])
         if not certs:
-            raise KSeFError("Brak certyfikatów publicznych KSeF")
+            raise KSeFError("Brak certyfikatow publicznych KSeF")
 
         for cert_info in certs:
             usage = cert_info.get("usage", [])
@@ -285,7 +285,7 @@ class KSeFClient:
         # Fallback — pierwszy aktywny certyfikat
         cert_b64 = certs[0].get("certificate") or certs[0].get("publicKey")
         if not cert_b64:
-            raise KSeFError("Nie można wyodrębnić klucza publicznego KSeF")
+            raise KSeFError("Nie mozna wyodrebnic klucza publicznego KSeF")
 
         cert_der = base64.b64decode(cert_b64)
         cert = x509.load_der_x509_certificate(cert_der, default_backend())
@@ -365,8 +365,20 @@ class KSeFClient:
 
         try:
             return serialization.load_pem_private_key(data, password=pwd, backend=default_backend())
+        except TypeError:
+            # Klucz zaszyfrowany, hasło nie podane — pytaj interaktywnie
+            if pwd is None:
+                import getpass
+                try:
+                    pwd_input = getpass.getpass("Haslo klucza prywatnego: ")
+                    return serialization.load_pem_private_key(
+                        data, password=pwd_input.encode("utf-8"), backend=default_backend()
+                    )
+                except Exception as exc2:
+                    raise KSeFError(f"Bledne haslo klucza prywatnego: {exc2}")
+            raise KSeFError("Klucz prywatny jest zaszyfrowany - podaj haslo (--password, --password-enc lub --password-file)")
         except Exception as exc:
-            raise KSeFError(f"Błąd ładowania klucza prywatnego: {exc}")
+            raise KSeFError(f"Blad ladowania klucza prywatnego: {exc}")
 
     def _build_auth_token_request_xml(self, challenge: str, timestamp: str = None) -> str:
         root = etree.Element("AuthTokenRequest", nsmap={None: AUTH_TOKEN_NS})
@@ -535,7 +547,7 @@ class KSeFClient:
             page_offset: Offset strony
         """
         if not self.access_token:
-            raise KSeFError("Brak aktywnej sesji — najpierw uwierzytelnij się")
+            raise KSeFError("Brak aktywnej sesji - najpierw uwierzytelnij sie")
 
         if date_to is None:
             date_to = datetime.date.today()
@@ -570,7 +582,7 @@ class KSeFClient:
             Surowe bajty XML (zachowuje oryginalne kodowanie dla hash QR)
         """
         if not self.access_token:
-            raise KSeFError("Brak aktywnej sesji — najpierw uwierzytelnij się")
+            raise KSeFError("Brak aktywnej sesji - najpierw uwierzytelnij sie")
 
         url = f"{self.base_url}/invoices/ksef/{ksef_number}"
         headers = {
@@ -580,7 +592,7 @@ class KSeFClient:
 
         resp = self._session.get(url, headers=headers, timeout=self.timeout)
         if resp.status_code >= 400:
-            raise KSeFError(f"Błąd pobierania faktury: HTTP {resp.status_code}", resp.status_code)
+            raise KSeFError(f"Blad pobierania faktury: HTTP {resp.status_code}", resp.status_code)
 
         return resp.content
 
@@ -614,7 +626,7 @@ def encrypt_password(password: str, key_path: str) -> str:
 
     key = Path(key_path).read_bytes()
     if len(key) != 32:
-        raise ValueError(f"Klucz AES musi mieć 32 bajty, ma {len(key)}")
+        raise ValueError(f"Klucz AES musi miec 32 bajty, ma {len(key)}")
 
     nonce = os.urandom(12)
     aesgcm = AESGCM(key)
@@ -628,7 +640,7 @@ def decrypt_password(encrypted: str, key_path: str) -> str:
 
     key = Path(key_path).read_bytes()
     if len(key) != 32:
-        raise ValueError(f"Klucz AES musi mieć 32 bajty, ma {len(key)}")
+        raise ValueError(f"Klucz AES musi miec 32 bajty, ma {len(key)}")
 
     raw = base64.b64decode(encrypted)
     nonce = raw[:12]
@@ -678,7 +690,7 @@ def _cli() -> None:
     # Tryb szyfrowania hasła (helper dla instalatora)
     if args.encrypt_password:
         if not args.generate_keyfile and not args.password_keyfile:
-            print("BŁĄD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
+            print("BLAD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
             sys.exit(1)
         keyfile = args.generate_keyfile or args.password_keyfile
         if args.generate_keyfile:
@@ -689,7 +701,7 @@ def _cli() -> None:
 
     # Walidacja: tryb normalny wymaga metody auth
     if not args.token and not args.token_file and not args.cert:
-        print("BŁĄD: Podaj --token, --token-file lub --cert", file=sys.stderr)
+        print("BLAD: Podaj --token, --token-file lub --cert", file=sys.stderr)
         sys.exit(1)
 
     logging.basicConfig(
@@ -703,7 +715,7 @@ def _cli() -> None:
     # Uwierzytelnianie
     if args.cert:
         if not args.key:
-            print("BŁĄD: --key jest wymagany razem z --cert", file=sys.stderr)
+            print("BLAD: --key jest wymagany razem z --cert", file=sys.stderr)
             sys.exit(1)
 
         password = None
@@ -711,7 +723,7 @@ def _cli() -> None:
             password = args.password
         elif args.password_enc:
             if not args.password_keyfile:
-                print("BŁĄD: --password-keyfile wymagany z --password-enc", file=sys.stderr)
+                print("BLAD: --password-keyfile wymagany z --password-enc", file=sys.stderr)
                 sys.exit(1)
             password = decrypt_password(args.password_enc, args.password_keyfile)
         elif args.password_file:
@@ -723,7 +735,7 @@ def _cli() -> None:
         if args.token_file:
             token = Path(args.token_file).read_text(encoding="utf-8").strip()
         if not token:
-            print("BŁĄD: Podaj --token lub --token-file", file=sys.stderr)
+            print("BLAD: Podaj --token lub --token-file", file=sys.stderr)
             sys.exit(1)
 
         client.authenticate_token(token)

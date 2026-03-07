@@ -1050,6 +1050,7 @@ setlocal DisableDelayedExpansion
     echo ^)
     echo.
     echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef_client.py... ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] FETCH_ARGS=!FETCH_ARGS! ^>^> "%%LOG%%"
     echo cd /d "%%NIPDIR%%"
     echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! 2^>^>"%%LOG%%"
     echo set "FETCH_ERR=!ERRORLEVEL!"
