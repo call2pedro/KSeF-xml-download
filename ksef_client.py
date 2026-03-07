@@ -598,6 +598,46 @@ class KSeFClient:
 
 
 # ---------------------------------------------------------------------------
+# Szyfrowanie hasła AES-256-GCM
+# ---------------------------------------------------------------------------
+
+def generate_aes_key(key_path: str) -> bytes:
+    """Generuj losowy klucz AES-256 i zapisz do pliku."""
+    key = os.urandom(32)
+    Path(key_path).write_bytes(key)
+    return key
+
+
+def encrypt_password(password: str, key_path: str) -> str:
+    """Szyfruj hasło AES-256-GCM. Zwraca base64(nonce + ciphertext + tag)."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    key = Path(key_path).read_bytes()
+    if len(key) != 32:
+        raise ValueError(f"Klucz AES musi mieć 32 bajty, ma {len(key)}")
+
+    nonce = os.urandom(12)
+    aesgcm = AESGCM(key)
+    ct = aesgcm.encrypt(nonce, password.encode("utf-8"), None)
+    return base64.b64encode(nonce + ct).decode("ascii")
+
+
+def decrypt_password(encrypted: str, key_path: str) -> str:
+    """Odszyfruj hasło AES-256-GCM z base64(nonce + ciphertext + tag)."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    key = Path(key_path).read_bytes()
+    if len(key) != 32:
+        raise ValueError(f"Klucz AES musi mieć 32 bajty, ma {len(key)}")
+
+    raw = base64.b64decode(encrypted)
+    nonce = raw[:12]
+    ct = raw[12:]
+    aesgcm = AESGCM(key)
+    return aesgcm.decrypt(nonce, ct, None).decode("utf-8")
+
+
+# ---------------------------------------------------------------------------
 # CLI — samodzielne użycie
 # ---------------------------------------------------------------------------
 
@@ -616,7 +656,7 @@ def _cli() -> None:
     parser.add_argument("--days", type=int, default=30, help="Ile dni wstecz")
     parser.add_argument("-v", "--verbose", action="store_true")
 
-    auth_group = parser.add_mutually_exclusive_group(required=True)
+    auth_group = parser.add_mutually_exclusive_group(required=False)
     auth_group.add_argument("--token", help="Token KSeF")
     auth_group.add_argument("--token-file", help="Plik z tokenem KSeF")
     auth_group.add_argument("--cert", help="Ścieżka do certyfikatu PEM")
@@ -624,8 +664,33 @@ def _cli() -> None:
     parser.add_argument("--key", help="Ścieżka do klucza prywatnego PEM (dla --cert)")
     parser.add_argument("--password", help="Hasło klucza prywatnego (dla --cert)")
     parser.add_argument("--password-file", help="Plik z hasłem klucza prywatnego")
+    parser.add_argument("--password-enc", help="Zaszyfrowane hasło AES-256-GCM (base64)")
+    parser.add_argument("--password-keyfile", help="Plik z kluczem AES-256 (dla --password-enc)")
+
+    # Tryb pomocniczy: szyfrowanie hasła
+    parser.add_argument("--encrypt-password", metavar="PASSWORD",
+                        help="Zaszyfruj hasło i wypisz na stdout (tryb pomocniczy)")
+    parser.add_argument("--generate-keyfile", metavar="PATH",
+                        help="Wygeneruj klucz AES-256 do pliku (dla --encrypt-password)")
 
     args = parser.parse_args()
+
+    # Tryb szyfrowania hasła (helper dla instalatora)
+    if args.encrypt_password:
+        if not args.generate_keyfile and not args.password_keyfile:
+            print("BŁĄD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
+            sys.exit(1)
+        keyfile = args.generate_keyfile or args.password_keyfile
+        if args.generate_keyfile:
+            generate_aes_key(keyfile)
+        encrypted = encrypt_password(args.encrypt_password, keyfile)
+        print(encrypted)
+        sys.exit(0)
+
+    # Walidacja: tryb normalny wymaga metody auth
+    if not args.token and not args.token_file and not args.cert:
+        print("BŁĄD: Podaj --token, --token-file lub --cert", file=sys.stderr)
+        sys.exit(1)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -644,6 +709,11 @@ def _cli() -> None:
         password = None
         if args.password:
             password = args.password
+        elif args.password_enc:
+            if not args.password_keyfile:
+                print("BŁĄD: --password-keyfile wymagany z --password-enc", file=sys.stderr)
+                sys.exit(1)
+            password = decrypt_password(args.password_enc, args.password_keyfile)
         elif args.password_file:
             password = Path(args.password_file).read_text(encoding="utf-8").strip()
 

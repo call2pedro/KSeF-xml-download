@@ -764,23 +764,25 @@ if not exist "!KEY_SRC!" (
 )
 echo        Klucz prywatny: !KEY_SRC!
 
-:: Haslo klucza prywatnego (opcjonalne, szyfrowane DPAPI)
+:: Haslo klucza prywatnego (opcjonalne, szyfrowane AES-256-GCM)
 set "KEY_PASSWORD="
-set "KEY_PASSWORD_DPAPI="
+set "KEY_PASSWORD_ENC="
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
 set /p "KEY_PASSWORD=  Haslo: "
 if "!KEY_PASSWORD!" neq "" (
-    echo        Szyfrowanie hasla (DPAPI)...
-    echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla DPAPI >> "%LOG_FILE%"
-    for /f "usebackq delims=" %%E in (`powershell -NoProfile -Command "$ss = ConvertTo-SecureString '!KEY_PASSWORD!' -AsPlainText -Force; ConvertFrom-SecureString $ss"`) do set "KEY_PASSWORD_DPAPI=%%E"
-    if "!KEY_PASSWORD_DPAPI!"=="" (
-        echo  [UWAGA] Szyfrowanie DPAPI nie powiodlo sie.
-        echo          Haslo zostanie zapisane jako tekst.
-        set "KEY_PASSWORD_DPAPI=PLAIN:!KEY_PASSWORD!"
-    ) else (
-        echo        Haslo zaszyfrowane pomyslnie.
+    echo        Szyfrowanie hasla (AES-256)...
+    echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla AES-256-GCM >> "%LOG_FILE%"
+    set "AES_KEYFILE=%INSTALL_DIR%\!CONTEXT_NIP!\certs\.aes_key"
+    mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
+    for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password "!KEY_PASSWORD!" --generate-keyfile "!AES_KEYFILE!" 2^>nul`) do set "KEY_PASSWORD_ENC=%%E"
+    if "!KEY_PASSWORD_ENC!"=="" (
+        echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
+        echo         Sprawdz czy Python i ksef_client.py sa zainstalowane.
+        goto :error_exit
     )
+    echo        Haslo zaszyfrowane pomyslnie.
+    echo        Klucz AES: !AES_KEYFILE!
     :: Wyczysc haslo z pamieci
     set "KEY_PASSWORD="
 )
@@ -904,7 +906,7 @@ echo  [7/7] Generowanie plikow...
         echo KSEF_TOKEN=!KSEF_TOKEN!
     )
     if "!AUTH_METHOD!"=="certificate" (
-        if "!KEY_PASSWORD_DPAPI!" neq "" echo KEY_PASSWORD_DPAPI=!KEY_PASSWORD_DPAPI!
+        if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!
     )
 ) > "!NIP_DIR!\.env"
 echo        .env utworzony
@@ -1041,17 +1043,9 @@ setlocal DisableDelayedExpansion
     echo if "%%AUTH_METHOD%%"=="certificate" ^(
     echo     echo [%%DATE%% %%TIME%%] Metoda: certyfikat ^>^> "%%LOG%%"
     echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%NIPDIR%%\certs\auth_cert.crt --key %%NIPDIR%%\certs\auth_key.key"
-    echo     :: Odszyfruj haslo DPAPI jesli jest
-    echo     if defined KEY_PASSWORD_DPAPI ^(
-    echo         if "!KEY_PASSWORD_DPAPI:~0,6!"=="PLAIN:" ^(
-    echo             set "DECRYPTED_PWD=!KEY_PASSWORD_DPAPI:~6!"
-    echo         ^) else ^(
-    echo             for /f "usebackq delims=" %%%%P in ^(`powershell -NoProfile -Command "$ss = '!KEY_PASSWORD_DPAPI!' | ConvertTo-SecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss^); [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr^)"`) do set "DECRYPTED_PWD=%%%%P"
-    echo         ^)
-    echo         if defined DECRYPTED_PWD ^(
-    echo             echo !DECRYPTED_PWD!^> "%%NIPDIR%%\.keypass"
-    echo             set "FETCH_ARGS=!FETCH_ARGS! --password-file %%NIPDIR%%\.keypass"
-    echo         ^)
+    echo     :: Przekaz zaszyfrowane haslo jesli jest
+    echo     if defined KEY_PASSWORD_ENC ^(
+    echo         set "FETCH_ARGS=!FETCH_ARGS! --password-enc !KEY_PASSWORD_ENC! --password-keyfile %%NIPDIR%%\certs\.aes_key"
     echo     ^)
     echo ^)
     echo.
@@ -1061,9 +1055,8 @@ setlocal DisableDelayedExpansion
     echo set "FETCH_ERR=!ERRORLEVEL!"
     echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
     echo.
-    echo :: Usun tymczasowe pliki z poufnymi danymi
+    echo :: Usun tymczasowy plik tokenu
     echo if exist "%%NIPDIR%%\.token" del "%%NIPDIR%%\.token" ^>nul 2^>^&1
-    echo if exist "%%NIPDIR%%\.keypass" del "%%NIPDIR%%\.keypass" ^>nul 2^>^&1
     echo.
     echo if !FETCH_ERR! neq 0 ^(
     echo     echo.
