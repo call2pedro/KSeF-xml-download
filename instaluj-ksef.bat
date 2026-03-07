@@ -769,7 +769,8 @@ set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
-set /p "KEY_PASSWORD=  Haslo: "
+:: Maskowanie hasla gwiazdkami przez PowerShell
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$p = Read-Host '  Haslo' -AsSecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p); [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)"`) do set "KEY_PASSWORD=%%P"
 if "!KEY_PASSWORD!" neq "" (
     echo        Szyfrowanie hasla (AES-256)...
     echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla AES-256-GCM >> "%LOG_FILE%"
