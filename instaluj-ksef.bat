@@ -728,7 +728,7 @@ if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.
         echo        Pozostawiono istniejacy certyfikat.
         set "CERT_SRC_SAVED="
         set "KEY_SRC_SAVED="
-        goto :nip_ready
+        goto :ask_key_password
     )
     echo.
 )
@@ -765,6 +765,7 @@ if not exist "!KEY_SRC!" (
 echo        Klucz prywatny: !KEY_SRC!
 
 :: Haslo klucza prywatnego (opcjonalne, szyfrowane AES-256-GCM)
+:ask_key_password
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
 echo.
