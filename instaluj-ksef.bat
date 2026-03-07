@@ -808,7 +808,6 @@ if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
 set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
-set "NIP_LOG=%INSTALL_DIR%\!CONTEXT_NIP!\install.log"
 
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
@@ -818,36 +817,68 @@ echo  Haslo klucza prywatnego (Enter = brak hasla):
 set "KSEF_PW_TMP=!PW_TMPFILE!"
 powershell -NoProfile -EncodedCommand JABwACAAPQAgAFIAZQBhAGQALQBIAG8AcwB0ACAAJwAgACAASABhAHMAbABvACcAIAAtAEEAcwBTAGUAYwB1AHIAZQBTAHQAcgBpAG4AZwAKACQAcAB0AHIAIAA9ACAAWwBSAHUAbgB0AGkAbQBlAC4ASQBuAHQAZQByAG8AcABTAGUAcgB2AGkAYwBlAHMALgBNAGEAcgBzAGgAYQBsAF0AOgA6AFMAZQBjAHUAcgBlAFMAdAByAGkAbgBnAFQAbwBCAFMAVABSACgAJABwACkACgAkAHAAbABhAGkAbgAgAD0AIABbAFIAdQBuAHQAaQBtAGUALgBJAG4AdABlAHIAbwBwAFMAZQByAHYAaQBjAGUAcwAuAE0AYQByAHMAaABhAGwAXQA6ADoAUAB0AHIAVABvAFMAdAByAGkAbgBnAEIAUwBUAFIAKAAkAHAAdAByACkACgBbAFIAdQBuAHQAaQBtAGUALgBJAG4AdABlAHIAbwBwAFMAZQByAHYAaQBjAGUAcwAuAE0AYQByAHMAaABhAGwAXQA6ADoAWgBlAHIAbwBGAHIAZQBlAEIAUwBUAFIAKAAkAHAAdAByACkACgBpAGYAIAAoACQAcABsAGEAaQBuAC4ATABlAG4AZwB0AGgAIAAtAGcAdAAgADAAKQAgAHsAIABbAEkATwAuAEYAaQBsAGUAXQA6ADoAVwByAGkAdABlAEEAbABsAFQAZQB4AHQAKAAkAGUAbgB2ADoASwBTAEUARgBfAFAAVwBfAFQATQBQACwAIAAkAHAAbABhAGkAbgApACAAfQAKAA==
 
-echo [%DATE% %TIME%] Pytanie o haslo klucza prywatnego >> "!NIP_LOG!"
+echo [%DATE% %TIME%] [6/7] Pytanie o haslo klucza prywatnego >> "%LOG_FILE%"
 
 if not exist "!PW_TMPFILE!" (
     echo        Brak hasla — klucz prywatny bez szyfrowania.
-    echo [%DATE% %TIME%] Haslo: puste >> "!NIP_LOG!"
+    echo [%DATE% %TIME%] Haslo: puste >> "%LOG_FILE%"
     goto :password_done
 )
 
 echo        Szyfrowanie hasla (AES-256)...
-echo [%DATE% %TIME%] Szyfrowanie hasla AES-256-GCM >> "!NIP_LOG!"
-set "AES_KEYFILE=%INSTALL_DIR%\!CONTEXT_NIP!\certs\.aes_key"
-mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
+
+:: Utworz folder NIP\certs jesli nie istnieje
+set "NIP_DIR=%INSTALL_DIR%\!CONTEXT_NIP!"
+set "CERTS_DIR=!NIP_DIR!\certs"
+mkdir "!CERTS_DIR!" >nul 2>&1
+
+set "AES_KEYFILE=!CERTS_DIR!\.aes_key"
+set "PW_ERR=%TEMP%\ksef_pw_err_%RANDOM%.tmp"
+
+echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla AES-256-GCM >> "%LOG_FILE%"
+echo [%DATE% %TIME%] PYTHON_DIR=%PYTHON_DIR% >> "%LOG_FILE%"
+echo [%DATE% %TIME%] ksef_client.py=%INSTALL_DIR%\ksef_client.py >> "%LOG_FILE%"
+echo [%DATE% %TIME%] PW_TMPFILE=!PW_TMPFILE! >> "%LOG_FILE%"
+echo [%DATE% %TIME%] AES_KEYFILE=!AES_KEYFILE! >> "%LOG_FILE%"
+
+:: Sprawdz czy pliki istnieja
+if not exist "%PYTHON_DIR%\python.exe" (
+    echo  [BLAD] Nie znaleziono Python: %PYTHON_DIR%\python.exe
+    echo [%DATE% %TIME%] BLAD: brak python.exe >> "%LOG_FILE%"
+    goto :error_exit
+)
+if not exist "%INSTALL_DIR%\ksef_client.py" (
+    echo  [BLAD] Nie znaleziono ksef_client.py: %INSTALL_DIR%\ksef_client.py
+    echo [%DATE% %TIME%] BLAD: brak ksef_client.py >> "%LOG_FILE%"
+    goto :error_exit
+)
+if not exist "!PW_TMPFILE!" (
+    echo  [BLAD] Nie znaleziono pliku tymczasowego z haslem.
+    echo [%DATE% %TIME%] BLAD: brak PW_TMPFILE !PW_TMPFILE! >> "%LOG_FILE%"
+    goto :error_exit
+)
 
 :: Szyfrowanie — Python czyta haslo z pliku tymczasowego
-echo [%DATE% %TIME%] Python: --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" >> "!NIP_LOG!"
-for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>"!NIP_LOG!.err"`) do set "KEY_PASSWORD_ENC=%%E"
+for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>"!PW_ERR!"`) do set "KEY_PASSWORD_ENC=%%E"
 
 :: Usun plik tymczasowy z haslem
 del /f /q "!PW_TMPFILE!" >nul 2>&1
 
 if "!KEY_PASSWORD_ENC!"=="" (
     echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
-    echo         Szczegoly w: %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\install.log.err
-    echo [%DATE% %TIME%] BLAD: KEY_PASSWORD_ENC puste >> "!NIP_LOG!"
-    type "!NIP_LOG!.err" >> "!NIP_LOG!" 2>nul
+    echo [%DATE% %TIME%] BLAD: KEY_PASSWORD_ENC puste >> "%LOG_FILE%"
+    if exist "!PW_ERR!" (
+        echo         --- Blad Pythona: ---
+        type "!PW_ERR!"
+        type "!PW_ERR!" >> "%LOG_FILE%"
+        del /f /q "!PW_ERR!" >nul 2>&1
+    )
     goto :error_exit
 )
+del /f /q "!PW_ERR!" >nul 2>&1
 echo        Haslo zaszyfrowane pomyslnie.
 echo        Klucz AES: !AES_KEYFILE!
-echo [%DATE% %TIME%] Haslo zaszyfrowane OK >> "!NIP_LOG!"
+echo [%DATE% %TIME%] Haslo zaszyfrowane OK >> "%LOG_FILE%"
 
 :password_done
 
