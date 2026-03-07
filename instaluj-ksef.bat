@@ -734,18 +734,29 @@ if "!CERT_EXISTS!"=="1" if /i "!CERT_REPLACE!" neq "T" (
     goto :ask_key_password
 )
 
+:: Domyslne sciezki do plikow certyfikatu
+set "DEFAULT_CERT=!CERT_TARGET_DIR!\auth_cert.crt"
+set "DEFAULT_KEY=!CERT_TARGET_DIR!\auth_key.key"
+
 echo.
-echo  Podaj sciezki do plikow certyfikatu:
+echo  Domyslne sciezki do plikow certyfikatu:
+echo   Certyfikat: !DEFAULT_CERT!
+echo   Klucz:      !DEFAULT_KEY!
 echo.
+
+set "CHANGE_CERT_PATHS=N"
+set /p "CHANGE_CERT_PATHS=  Czy chcesz zmienic domyslne sciezki? [T/N] (domyslnie N): "
+if /i "!CHANGE_CERT_PATHS!" neq "T" (
+    set "CERT_SRC=!DEFAULT_CERT!"
+    set "KEY_SRC=!DEFAULT_KEY!"
+    goto :verify_cert_files
+)
 
 :: Sciezka do certyfikatu .crt
 :ask_cert_path
 set "CERT_SRC="
-set /p "CERT_SRC=  Sciezka do certyfikatu (.crt): "
-if "!CERT_SRC!"=="" (
-    echo  [!] Sciezka do certyfikatu jest wymagana.
-    goto :ask_cert_path
-)
+set /p "CERT_SRC=  Sciezka do certyfikatu (.crt) [!DEFAULT_CERT!]: "
+if "!CERT_SRC!"=="" set "CERT_SRC=!DEFAULT_CERT!"
 if not exist "!CERT_SRC!" (
     echo  [!] Plik nie znaleziony: !CERT_SRC!
     goto :ask_cert_path
@@ -755,15 +766,52 @@ echo        Certyfikat: !CERT_SRC!
 :: Sciezka do klucza prywatnego .key
 :ask_key_path
 set "KEY_SRC="
-set /p "KEY_SRC=  Sciezka do klucza prywatnego (.key): "
-if "!KEY_SRC!"=="" (
-    echo  [!] Sciezka do klucza prywatnego jest wymagana.
-    goto :ask_key_path
-)
+set /p "KEY_SRC=  Sciezka do klucza prywatnego (.key) [!DEFAULT_KEY!]: "
+if "!KEY_SRC!"=="" set "KEY_SRC=!DEFAULT_KEY!"
 if not exist "!KEY_SRC!" (
     echo  [!] Plik nie znaleziony: !KEY_SRC!
     goto :ask_key_path
 )
+echo        Klucz prywatny: !KEY_SRC!
+goto :ask_key_password
+
+:verify_cert_files
+:: Sprawdz czy domyslne pliki istnieja
+if not exist "!CERT_SRC!" (
+    echo.
+    echo  ===========================================================
+    echo   Plik certyfikatu nie znaleziony:
+    echo   !CERT_SRC!
+    echo.
+    echo   Skopiuj plik auth_cert.crt do folderu:
+    echo   !CERT_TARGET_DIR!
+    echo.
+    echo   Nastepnie nacisnij dowolny klawisz.
+    echo  ===========================================================
+    pause >nul
+    if not exist "!CERT_SRC!" (
+        echo  [!] Nadal brak pliku certyfikatu. Podaj sciezke recznie.
+        goto :ask_cert_path
+    )
+)
+if not exist "!KEY_SRC!" (
+    echo.
+    echo  ===========================================================
+    echo   Plik klucza prywatnego nie znaleziony:
+    echo   !KEY_SRC!
+    echo.
+    echo   Skopiuj plik auth_key.key do folderu:
+    echo   !CERT_TARGET_DIR!
+    echo.
+    echo   Nastepnie nacisnij dowolny klawisz.
+    echo  ===========================================================
+    pause >nul
+    if not exist "!KEY_SRC!" (
+        echo  [!] Nadal brak pliku klucza. Podaj sciezke recznie.
+        goto :ask_key_path
+    )
+)
+echo        Certyfikat: !CERT_SRC!
 echo        Klucz prywatny: !KEY_SRC!
 
 :: Haslo klucza prywatnego (opcjonalne, szyfrowane AES-256-GCM)
