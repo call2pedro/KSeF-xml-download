@@ -712,7 +712,7 @@ goto :ask_nip_cert
 set "CERT_TARGET_DIR=%INSTALL_DIR%\!CONTEXT_NIP!\certs"
 
 echo.
-echo  Folder certyfikatow: !CERT_TARGET_DIR!
+echo  Folder certyfikatow: %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
 echo   auth_cert.crt  - certyfikat uwierzytelniajacy
 echo   auth_key.key   - klucz prywatny
 echo.
@@ -720,8 +720,8 @@ echo.
 :: Sprawdz czy certyfikat juz istnieje w folderze docelowym
 if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.key" (
     echo  [INFO] Certyfikat juz istnieje w folderze podatnika:
-    echo         !CERT_TARGET_DIR!\auth_cert.crt
-    echo         !CERT_TARGET_DIR!\auth_key.key
+    echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_cert.crt
+    echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_key.key
     echo.
     set /p "CERT_REPLACE=  Zastapic istniejacy certyfikat? [T/N]: "
     if /i "!CERT_REPLACE!" neq "T" (
