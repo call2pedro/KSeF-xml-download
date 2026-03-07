@@ -718,21 +718,23 @@ echo   auth_key.key   - klucz prywatny
 echo.
 
 :: Sprawdz czy certyfikat juz istnieje w folderze docelowym
-if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.key" (
+set "CERT_EXISTS=0"
+if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.key" set "CERT_EXISTS=1"
+if "!CERT_EXISTS!"=="1" (
     echo  [INFO] Certyfikat juz istnieje w folderze podatnika:
     echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_cert.crt
     echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_key.key
     echo.
     set /p "CERT_REPLACE=  Zastapic istniejacy certyfikat? [T/N]: "
-    if /i "!CERT_REPLACE!" neq "T" (
-        echo        Pozostawiono istniejacy certyfikat.
-        set "CERT_SRC_SAVED="
-        set "KEY_SRC_SAVED="
-        goto :ask_key_password
-    )
-    echo.
+)
+if "!CERT_EXISTS!"=="1" if /i "!CERT_REPLACE!" neq "T" (
+    echo        Pozostawiono istniejacy certyfikat.
+    set "CERT_SRC_SAVED="
+    set "KEY_SRC_SAVED="
+    goto :ask_key_password
 )
 
+echo.
 echo  Podaj sciezki do plikow certyfikatu:
 echo.
 
@@ -805,29 +807,55 @@ if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
 :ask_key_password_input
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
+set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
+set "PS_TMPFILE=%TEMP%\ksef_askpw_%RANDOM%.ps1"
+set "NIP_LOG=%INSTALL_DIR%\!CONTEXT_NIP!\install.log"
+
 echo.
 echo  Haslo klucza prywatnego (Enter = brak hasla):
-:: Maskowanie hasla gwiazdkami przez PowerShell
-:: Haslo zapisywane do pliku tymczasowego aby uniknac problemow ze znakami specjalnymi w batch
-set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
-powershell -NoProfile -Command "$p = Read-Host '  Haslo' -AsSecureString; $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p); $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr); [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr); if ($plain.Length -gt 0) { [IO.File]::WriteAllText('%PW_TMPFILE%', $plain) }"
-if exist "!PW_TMPFILE!" (
-    echo        Szyfrowanie hasla (AES-256)...
-    echo [%DATE% %TIME%] [6/7] Szyfrowanie hasla AES-256-GCM >> "%LOG_FILE%"
-    set "AES_KEYFILE=%INSTALL_DIR%\!CONTEXT_NIP!\certs\.aes_key"
-    mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
-    :: Szyfrowanie — Python czyta haslo z pliku tymczasowego
-    for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>nul`) do set "KEY_PASSWORD_ENC=%%E"
-    :: Usun plik tymczasowy z haslem
-    del /f /q "!PW_TMPFILE!" >nul 2>&1
-    if "!KEY_PASSWORD_ENC!"=="" (
-        echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
-        echo         Sprawdz czy Python i ksef_client.py sa zainstalowane.
-        goto :error_exit
-    )
-    echo        Haslo zaszyfrowane pomyslnie.
-    echo        Klucz AES: !AES_KEYFILE!
+
+:: Skrypt PowerShell do pliku .ps1 (unika problemow z nawiasami w batch)
+echo $p = Read-Host '  Haslo' -AsSecureString > "!PS_TMPFILE!"
+echo $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($p) >> "!PS_TMPFILE!"
+echo $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) >> "!PS_TMPFILE!"
+echo [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) >> "!PS_TMPFILE!"
+echo if ($plain.Length -gt 0) { [IO.File]::WriteAllText('%PW_TMPFILE%', $plain) } >> "!PS_TMPFILE!"
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "!PS_TMPFILE!"
+del /f /q "!PS_TMPFILE!" >nul 2>&1
+
+echo [%DATE% %TIME%] Pytanie o haslo klucza prywatnego >> "!NIP_LOG!"
+
+if not exist "!PW_TMPFILE!" (
+    echo        Brak hasla — klucz prywatny bez szyfrowania.
+    echo [%DATE% %TIME%] Haslo: puste >> "!NIP_LOG!"
+    goto :password_done
 )
+
+echo        Szyfrowanie hasla (AES-256)...
+echo [%DATE% %TIME%] Szyfrowanie hasla AES-256-GCM >> "!NIP_LOG!"
+set "AES_KEYFILE=%INSTALL_DIR%\!CONTEXT_NIP!\certs\.aes_key"
+mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
+
+:: Szyfrowanie — Python czyta haslo z pliku tymczasowego
+echo [%DATE% %TIME%] Python: --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" >> "!NIP_LOG!"
+for /f "usebackq delims=" %%E in (`"%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!PW_TMPFILE!" --generate-keyfile "!AES_KEYFILE!" 2^>"!NIP_LOG!.err"`) do set "KEY_PASSWORD_ENC=%%E"
+
+:: Usun plik tymczasowy z haslem
+del /f /q "!PW_TMPFILE!" >nul 2>&1
+
+if "!KEY_PASSWORD_ENC!"=="" (
+    echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
+    echo         Szczegoly w: %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\install.log.err
+    echo [%DATE% %TIME%] BLAD: KEY_PASSWORD_ENC puste >> "!NIP_LOG!"
+    type "!NIP_LOG!.err" >> "!NIP_LOG!" 2>nul
+    goto :error_exit
+)
+echo        Haslo zaszyfrowane pomyslnie.
+echo        Klucz AES: !AES_KEYFILE!
+echo [%DATE% %TIME%] Haslo zaszyfrowane OK >> "!NIP_LOG!"
+
+:password_done
 
 :: Zachowaj sciezki zrodlowe do kopiowania po utworzeniu folderu NIP
 :: (jesli CERT_SRC jest puste = cert juz jest w folderze, nie nadpisuj)
