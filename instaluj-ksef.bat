@@ -1272,7 +1272,6 @@ setlocal DisableDelayedExpansion
     echo     echo         Szczegoly w logu: %%LOG%%
     echo     echo.
     echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
-    echo     pause
     echo     exit /b 1
     echo ^)
     echo.
@@ -1321,9 +1320,8 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
     echo echo.
     echo echo  ========================================
-    echo echo  Gotowe. Nacisnij dowolny klawisz...
+    echo echo  Gotowe.
     echo echo  Log: %%LOG%%
-    echo pause ^>nul
 ) > "%LAUNCHER%"
 endlocal
 echo        Launcher: !NIP_DIR!\pobierz-faktury.bat
