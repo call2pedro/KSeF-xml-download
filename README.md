@@ -150,17 +150,15 @@ python ksef_pdf.py faktura.xml faktura.pdf --ksef-number "1234567890-20250115-XX
 | defusedxml | Bezpieczne parsowanie XML |
 | python-dotenv | Ladowanie .env |
 
-## Uzyte projekty
+## Zrodla i projekty KSeF
 
-| Projekt | Repozytorium | Rola |
-|---------|-------------|------|
-| ksef-cli | [aiv/ksef-cli](https://github.com/aiv/ksef-cli) | Legacy backup (flow tokenowy) |
-| ksef_client.py | w tym repozytorium | Klient KSeF (token + certyfikat) |
-| ksef_pdf.py | w tym repozytorium | Generator PDF (reportlab) |
+Oprogramowanie bazuje na nastepujacych projektach zwiazanych z KSeF:
 
-Bazuje na:
-- [sstybel/ksef-xml-download](https://github.com/sstybel/ksef-xml-download) (MIT) — wzorzec XAdES
-- [aiv/ksef-cli](https://github.com/aiv/ksef-cli) (GPL-3.0) — flow tokenowy
+| Projekt | Repozytorium | Licencja | Wykorzystanie |
+|---------|-------------|----------|---------------|
+| ksef-cli | [aiv/ksef-cli](https://github.com/aiv/ksef-cli) | GPL-3.0 | Flow tokenowy: challenge, szyfrowanie RSA-OAEP, polling, pobieranie faktur |
+| ksef-xml-download | [sstybel/ksef-xml-download](https://github.com/sstybel/ksef-xml-download) | MIT | Wzorzec podpisu XAdES-BES: budowa XML, kanonizacja C14N, struktura Signature |
+| KSeF API | [podatki.gov.pl/ksef](https://www.podatki.gov.pl/ksef/) | — | API Ministerstwa Finansow do obslugi e-faktur |
 
 ## Autor
 

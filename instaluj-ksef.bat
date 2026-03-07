@@ -766,6 +766,43 @@ echo        Klucz prywatny: !KEY_SRC!
 
 :: Haslo klucza prywatnego (opcjonalne, szyfrowane AES-256-GCM)
 :ask_key_password
+
+:: Upewnij sie ze folder certyfikatow istnieje
+mkdir "%INSTALL_DIR%\!CONTEXT_NIP!\certs" >nul 2>&1
+
+:: Sprawdz czy pliki certyfikatu sa w folderze docelowym
+:: (pomijamy jesli uzytkownik podal sciezki - pliki beda skopiowane pozniej)
+if defined CERT_SRC goto :ask_key_password_input
+if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
+    echo.
+    echo  ===========================================================
+    echo   UWAGA: Skopiuj pliki certyfikatu do folderu:
+    echo   %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
+    echo.
+    echo   Wymagane pliki:
+    echo    - auth_cert.crt  (certyfikat uwierzytelniajacy)
+    echo    - auth_key.key   (klucz prywatny)
+    echo.
+    echo   Skopiuj pliki TERAZ, a nastepnie nacisnij dowolny klawisz.
+    echo  ===========================================================
+    echo.
+    pause >nul
+    if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
+        echo  [!] Nie znaleziono auth_cert.crt w folderze:
+        echo      %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
+        echo  [!] Sprobuj ponownie.
+        goto :ask_key_password
+    )
+    if not exist "!CERT_TARGET_DIR!\auth_key.key" (
+        echo  [!] Nie znaleziono auth_key.key w folderze:
+        echo      %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
+        echo  [!] Sprobuj ponownie.
+        goto :ask_key_password
+    )
+    echo  [OK] Pliki certyfikatu znalezione.
+)
+
+:ask_key_password_input
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
 echo.
@@ -790,8 +827,9 @@ if "!KEY_PASSWORD!" neq "" (
 )
 
 :: Zachowaj sciezki zrodlowe do kopiowania po utworzeniu folderu NIP
-set "CERT_SRC_SAVED=!CERT_SRC!"
-set "KEY_SRC_SAVED=!KEY_SRC!"
+:: (jesli CERT_SRC jest puste = cert juz jest w folderze, nie nadpisuj)
+if defined CERT_SRC set "CERT_SRC_SAVED=!CERT_SRC!"
+if defined KEY_SRC set "KEY_SRC_SAVED=!KEY_SRC!"
 
 goto :nip_ready
 
