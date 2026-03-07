@@ -88,6 +88,10 @@ VAT_RATE_FIELDS = [
     ("5", "5", "8%"),
     ("6", "6", "0%"),
     ("7", "7", "zw."),
+    ("8", "8", "4%"),
+    ("9", "9", "3%"),
+    ("10", "10", "np."),
+    ("11", "11", "oo"),
 ]
 
 # Invoice type labels (CIRFMF standard)
@@ -478,6 +482,15 @@ def parse_ksef_xml(xml_path: Path) -> dict:
         data["fp"] = _text(fa, "ksef:FP", ns)
         data["tp"] = _text(fa, "ksef:TP", ns)
 
+        # OkresFa (okres fakturowania od-do)
+        okres = _find(fa, "ksef:OkresFa", ns)
+        if okres is not None:
+            data["okres_od"] = _text(okres, "ksef:P_4A", ns)
+            data["okres_do"] = _text(okres, "ksef:P_4B", ns)
+
+        # KursWalutyZ (kurs walutowy)
+        data["kurs_waluty"] = _text(fa, "ksef:KursWalutyZ", ns)
+
         # Dane faktury korygowanej (korekta)
         data["korekta_nr"] = _text(fa, "ksef:P_3A", ns)
         data["korekta_data"] = _text(fa, "ksef:P_3B", ns)
@@ -507,6 +520,15 @@ def parse_ksef_xml(xml_path: Path) -> dict:
                 val = _text(adnotacje, f"ksef:{field}", ns)
                 if val:
                     data["adnotacje"][field] = val
+            # Zwolnienie (P_19 + przepisy)
+            zwolnienie = _find(adnotacje, "ksef:Zwolnienie", ns)
+            if zwolnienie is not None:
+                p19 = _text(zwolnienie, "ksef:P_19", ns)
+                if p19:
+                    data["adnotacje"]["P_19"] = p19
+                data["adnotacje"]["P_19A"] = _text(zwolnienie, "ksef:P_19A", ns)
+                data["adnotacje"]["P_19B"] = _text(zwolnienie, "ksef:P_19B", ns)
+                data["adnotacje"]["P_19C"] = _text(zwolnienie, "ksef:P_19C", ns)
 
         # DodatkowyOpis (may be multiple)
         dodatkowe_opisy = []
@@ -1003,8 +1025,18 @@ class InvoicePDF:
             ("Miejsce wystawienia:", d.get("miejsce_wystawienia")),
             ("Data dostawy/wykonania:", d.get("data_dostawy")),
         ]
+        # Okres fakturowania (P_4A - P_4B)
+        okres_od = d.get("okres_od")
+        okres_do = d.get("okres_do")
+        if okres_od and okres_do:
+            fields.append(("Okres fakturowania:", f"{okres_od} — {okres_do}"))
+        elif okres_od:
+            fields.append(("Okres fakturowania od:", okres_od))
+
         if d.get("waluta") and d["waluta"] != "PLN":
             fields.append(("Waluta:", d["waluta"]))
+            if d.get("kurs_waluty"):
+                fields.append(("Kurs waluty:", d["kurs_waluty"]))
 
         for label, value in fields:
             if value:
@@ -1058,15 +1090,21 @@ class InvoicePDF:
 
         # Check if any row has P_11A (foreign currency net value)
         has_p11a = any(row.get("wartosc_netto_waluta") for row in wiersze)
+        # Check if any row uses brutto pricing (P_9B instead of P_9A)
+        has_brutto = any(
+            row.get("cena_jedn_brutto") and not row.get("cena_jedn")
+            for row in wiersze
+        )
         waluta = self.data.get("waluta", "")
 
         # Column headers and widths (in mm, None = flexible)
+        cena_label = "Cena brutto" if has_brutto else "Cena netto"
         headers = [
             "Lp",
             "Nazwa towaru lub usługi",
             "Jedn.",
             "Ilość",
-            "Cena netto",
+            cena_label,
             "Stawka VAT",
             "Wartość netto",
         ]
@@ -1117,7 +1155,8 @@ class InvoicePDF:
                         row.get("ilosc") or "", self.styles["table_cell_right"]
                     ),
                     Paragraph(
-                        _fmt(row.get("cena_jedn")), self.styles["table_cell_right"]
+                        _fmt(row.get("cena_jedn") or row.get("cena_jedn_brutto")),
+                        self.styles["table_cell_right"],
                     ),
                     Paragraph(stawka_str, self.styles["table_cell_center"]),
                     Paragraph(
@@ -1271,6 +1310,20 @@ class InvoicePDF:
             val = adnotacje.get(field)
             if val and val == "1":
                 items.append(f"* {label}")
+
+        # Zwolnienie z VAT (P_19)
+        if adnotacje.get("P_19") == "1":
+            zwolnienie_parts = ["* Zwolnienie z VAT"]
+            p19a = adnotacje.get("P_19A")
+            p19b = adnotacje.get("P_19B")
+            p19c = adnotacje.get("P_19C")
+            if p19a:
+                zwolnienie_parts.append(f"(art. {p19a} ustawy)")
+            if p19b:
+                zwolnienie_parts.append(f"(dyrektywa {p19b})")
+            if p19c:
+                zwolnienie_parts.append(f"({p19c})")
+            items.append(" ".join(zwolnienie_parts))
 
         # FP — Faktura do paragonu fiskalnego
         if d.get("fp") == "1":
