@@ -545,7 +545,7 @@ class KSeFClient:
             subject_type: 'Subject1' (wystawione), 'Subject2' (otrzymane)
             date_from: Data od (domyślnie: 30 dni wstecz)
             date_to: Data do (domyślnie: dziś)
-            date_type: 'Invoicing' lub 'Issue'
+            date_type: 'Invoicing', 'Issue' lub 'PermanentStorage'
             page_size: Wyników na stronę (max 250)
             page_offset: Offset strony
         """
@@ -567,8 +567,8 @@ class KSeFClient:
             "subjectType": subject_type,
             "dateRange": {
                 "dateType": date_type,
-                "from": f"{date_from.isoformat()}T00:00:00",
-                "to": f"{date_to.isoformat()}T23:59:59",
+                "from": f"{date_from.isoformat()}T00:00:00+00:00",
+                "to": f"{date_to.isoformat()}T23:59:59+00:00",
             },
         }
 
@@ -773,14 +773,17 @@ def _cli() -> None:
             page_offset=page_offset,
         )
 
-        invoices = result.get("invoiceHeaderList", [])
+        invoices = result.get("invoices", [])
+        logger.debug("Odpowiedź query: hasMore=%s, isTruncated=%s, invoices=%d, klucze=%s",
+                      result.get("hasMore"), result.get("isTruncated"),
+                      len(invoices), list(result.keys()))
         if not invoices:
             if page_offset == 0:
                 logger.info("Brak faktur w podanym zakresie dat.")
             break
 
         for inv in invoices:
-            ksef_nr = inv.get("ksefReferenceNumber", "")
+            ksef_nr = inv.get("ksefNumber", "")
             if not ksef_nr:
                 continue
 
@@ -800,10 +803,10 @@ def _cli() -> None:
             except KSeFError as exc:
                 logger.error("Błąd pobierania %s: %s", ksef_nr, exc)
 
-        # Paginacja
-        total_count = result.get("numberOfElements", 0)
+        # Paginacja: hasMore=true → są kolejne strony, isTruncated=true → limit 10k
         page_offset += len(invoices)
-        if page_offset >= total_count:
+        has_more = result.get("hasMore", False)
+        if not has_more:
             break
 
     logger.info("Zakończono. Pobrano: %d, pominięto: %d", total_downloaded, total_skipped)
