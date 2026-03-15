@@ -1054,7 +1054,7 @@ echo.
 set /p "CUSTOM_FAKTURY_DIR=  Sciezka: "
 :skip_custom_dir
 
-if "!CUSTOM_FAKTURY_DIR!" neq "" (
+if defined CUSTOM_FAKTURY_DIR (
     set "XML_DIR=!CUSTOM_FAKTURY_DIR!"
 ) else (
     set "XML_DIR=!NIP_DIR!\faktury"
@@ -1106,69 +1106,22 @@ echo.
 echo  [7/7] Generowanie plikow...
 
 :: --- Plik .env ---
-(
-    echo AUTH_METHOD=!AUTH_METHOD!
-    echo CONTEXT_NIP=!CONTEXT_NIP!
-    if "!AUTH_METHOD!"=="token" (
-        echo KSEF_TOKEN=!KSEF_TOKEN!
-    )
-    if "!AUTH_METHOD!"=="certificate" (
-        if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!
-    )
-    if "!CUSTOM_FAKTURY_DIR!" neq "" (
-        echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!
-    )
-) > "!NIP_DIR!\.env"
+echo AUTH_METHOD=!AUTH_METHOD!> "!NIP_DIR!\.env"
+echo CONTEXT_NIP=!CONTEXT_NIP!>> "!NIP_DIR!\.env"
+if "!AUTH_METHOD!"=="token" echo KSEF_TOKEN=!KSEF_TOKEN!>> "!NIP_DIR!\.env"
+if "!AUTH_METHOD!"=="certificate" if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!>> "!NIP_DIR!\.env"
+if defined CUSTOM_FAKTURY_DIR echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!>> "!NIP_DIR!\.env"
 echo        .env utworzony
 
-:: --- Utworz CLI runner (run_ksef.py) dla struktury pakietowej ---
-if "!REPO_STRUCTURE!"=="package" (
-    if not exist "%CLI_DIR%\run_ksef.py" (
-        (
-            echo """Skrypt CLI do pobierania faktur z KSeF"""
-            echo import os
-            echo import sys
-            echo from pathlib import Path
-            echo from dotenv import load_dotenv
-            echo.
-            echo # Zaladuj konfiguracje z CWD
-            echo load_dotenv(^)
-            echo.
-            echo ksef_token = os.environ.get('KSEF_TOKEN'^)
-            echo context_nip = os.environ.get('CONTEXT_NIP'^)
-            echo.
-            echo if not ksef_token or not context_nip:
-            echo     print('BLAD: Brak KSEF_TOKEN lub CONTEXT_NIP w pliku .env'^)
-            echo     sys.exit(1^)
-            echo.
-            echo from ksef import KSeFClient, InvoiceFetcher
-            echo.
-            echo client = KSeFClient(ksef_token, context_nip^)
-            echo fetcher = InvoiceFetcher(client^)
-            echo.
-            echo print('Laczenie z KSeF...'^)
-            echo result = fetcher.fetch_invoices(^)
-            echo.
-            echo count = result.get('count', 0^)
-            echo invoices = result.get('invoices', []^)
-            echo.
-            echo if count == 0:
-            echo     print('Brak nowych faktur.'^)
-            echo else:
-            echo     print(f'Pobrano {count} nowych faktur:'^)
-            echo     for inv in invoices:
-            echo         print(f'  - {inv.get("filename", "?"^)}'^)
-            echo.
-            echo print('Gotowe.'^)
-        ) > "%CLI_DIR%\run_ksef.py"
-        echo        run_ksef.py utworzony
-    )
-    set "ENTRY_SCRIPT=run_ksef.py"
-    set "ENTRY_ARGS="
-) else (
-    set "ENTRY_SCRIPT=fetch_invoices.py"
-    set "ENTRY_ARGS=--format text"
-)
+:: --- Ustal entry script (legacy ksef-cli) ---
+if "!REPO_STRUCTURE!" neq "package" goto :entry_flat
+set "ENTRY_SCRIPT=run_ksef.py"
+set "ENTRY_ARGS="
+goto :entry_done
+:entry_flat
+set "ENTRY_SCRIPT=fetch_invoices.py"
+set "ENTRY_ARGS=--format text"
+:entry_done
 
 :: --- Czyszczenie starego junction ksef-cli\faktury (z poprzedniej wersji) ---
 if exist "%CLI_DIR%\faktury" (
