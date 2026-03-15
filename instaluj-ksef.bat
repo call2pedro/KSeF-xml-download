@@ -1033,12 +1033,51 @@ echo [%DATE% %TIME%] [6/7] AUTH_METHOD=!AUTH_METHOD! NIP=!CONTEXT_NIP! >> "%LOG_
 
 :: Folder podatnika (per-NIP)
 set "NIP_DIR=%INSTALL_DIR%\!CONTEXT_NIP!"
-set "XML_DIR=!NIP_DIR!\faktury"
+
+:: ---- Pytanie o folder docelowy faktur ----
+echo.
+echo  Gdzie zapisywac pobrane faktury?
+echo.
+echo    [1] Domyslnie: !NIP_DIR!\faktury  (auto za 15s)
+echo    [2] Wlasna lokalizacja (np. OneDrive, dysk sieciowy)
+echo.
+choice /c 12 /t 15 /d 1 /n /m "  Wybierz [1-2]: "
+set "DIR_CHOICE=!ERRORLEVEL!"
+
+set "CUSTOM_FAKTURY_DIR="
+if "!DIR_CHOICE!" neq "2" goto :skip_custom_dir
+echo.
+echo  Podaj pelna sciezke do folderu faktur.
+echo  Moze zawierac polskie znaki, spacje i dluga sciezke.
+echo  Przyklad: C:\Users\Jan\OneDrive\@Faktury
+echo.
+set /p "CUSTOM_FAKTURY_DIR=  Sciezka: "
+:skip_custom_dir
+
+if "!CUSTOM_FAKTURY_DIR!" neq "" (
+    set "XML_DIR=!CUSTOM_FAKTURY_DIR!"
+) else (
+    set "XML_DIR=!NIP_DIR!\faktury"
+)
+
 mkdir "!NIP_DIR!" >nul 2>&1
+
+set "XML_DIR_EXISTED=0"
+if exist "!XML_DIR!" set "XML_DIR_EXISTED=1"
 mkdir "!XML_DIR!" >nul 2>&1
+if not exist "!XML_DIR!" (
+    echo  [BLAD] Nie udalo sie utworzyc folderu: !XML_DIR!
+    echo  Sprawdz czy sciezka jest poprawna i masz uprawnienia.
+    goto :error_exit
+)
 echo.
 echo        Folder podatnika: !NIP_DIR!
-echo        Katalog faktur:   !XML_DIR!
+if "!XML_DIR_EXISTED!"=="1" (
+    echo        Katalog faktur:   !XML_DIR!  (istniejacy)
+) else (
+    echo        Katalog faktur:   !XML_DIR!  (utworzony)
+)
+echo [%DATE% %TIME%] [6/7] XML_DIR=!XML_DIR! (existed=!XML_DIR_EXISTED!) >> "%LOG_FILE%"
 
 :: Kopiuj certyfikat i klucz do folderu NIP (jesli auth certyfikatem i podano nowe pliki)
 if "!AUTH_METHOD!"=="certificate" if "!CERT_SRC_SAVED!" neq "" (
@@ -1075,6 +1114,9 @@ echo  [7/7] Generowanie plikow...
     )
     if "!AUTH_METHOD!"=="certificate" (
         if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!
+    )
+    if "!CUSTOM_FAKTURY_DIR!" neq "" (
+        echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!
     )
 ) > "!NIP_DIR!\.env"
 echo        .env utworzony
@@ -1176,7 +1218,12 @@ setlocal DisableDelayedExpansion
     echo @echo off
     echo chcp 65001 ^>nul 2^>^&1
     echo setlocal EnableDelayedExpansion
-    echo title Pobieranie faktur z KSeF + generowanie PDF
+    echo.
+    echo :: --- Tryb pracy: --auto (harmonogram) lub interaktywny ---
+    echo set "AUTO_MODE=0"
+    echo if "%%~1"=="--auto" set "AUTO_MODE=1"
+    echo.
+    echo if "%%AUTO_MODE%%"=="0" title Pobieranie faktur z KSeF + generowanie PDF
     echo.
     echo :: --- Sciezki ---
     echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
@@ -1185,17 +1232,37 @@ setlocal DisableDelayedExpansion
     echo :: --- Log ---
     echo set "LOG=%%NIPDIR%%\pobierz-faktury.log"
     echo echo =============================== ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] START ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] START (auto=%%AUTO_MODE%%^) ^>^> "%%LOG%%"
     echo echo [%%DATE%% %%TIME%%] USER=%%USERNAME%% COMPUTER=%%COMPUTERNAME%% ^>^> "%%LOG%%"
     echo.
     echo :: Zaladuj zmienne z .env do srodowiska
     echo for /f "usebackq tokens=*" %%%%L in ^("%%NIPDIR%%\.env"^) do set "%%%%L"
     echo.
-    echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
+    echo :: Katalog faktur - z .env (FAKTURY_DIR) lub domyslny
+    echo if defined FAKTURY_DIR ^(
+    echo     set "XML_DIR=%%FAKTURY_DIR%%"
+    echo ^) else ^(
+    echo     set "XML_DIR=%%NIPDIR%%\faktury"
+    echo ^)
+    echo mkdir "%%XML_DIR%%" ^>nul 2^>^&1
     echo.
+    echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
+    echo echo [%%DATE%% %%TIME%%] XML_DIR=%%XML_DIR%% ^>^> "%%LOG%%"
+    echo.
+    echo :: --- Tryb automatyczny: 30 dni, bez menu ---
+    echo if "%%AUTO_MODE%%"=="1" ^(
+    echo     set "DAYS=30"
+    echo     echo [%%DATE%% %%TIME%%] Tryb automatyczny: 30 dni wstecz ^>^> "%%LOG%%"
+    echo     goto :run_fetch
+    echo ^)
+    echo.
+    echo :: --- Tryb interaktywny: menu wyboru okresu ---
     echo echo.
     echo echo  Pobieranie faktur XML z KSeF
     echo echo  ========================================
+    echo echo.
+    echo echo  NIP: %GEN_NIP%
+    echo echo  Katalog faktur: %%XML_DIR%%
     echo echo.
     echo echo  Wybierz okres pobierania:
     echo echo.
@@ -1237,8 +1304,11 @@ setlocal DisableDelayedExpansion
     echo echo  Okres: %%DAYS%% dni wstecz
     echo echo.
     echo.
+    echo :run_fetch
+    echo echo [%%DATE%% %%TIME%%] Okres: %%DAYS%% dni wstecz ^>^> "%%LOG%%"
+    echo.
     echo :: --- Buduj argumenty ksef_client.py ---
-    echo set "FETCH_ARGS=--nip %GEN_NIP% --output-dir %%NIPDIR%%\faktury --days %%DAYS%%"
+    echo set FETCH_ARGS=--nip %GEN_NIP% --output-dir "%%XML_DIR%%" --days %%DAYS%%
     echo.
     echo if "%%AUTH_METHOD%%"=="token" ^(
     echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
@@ -1256,10 +1326,11 @@ setlocal DisableDelayedExpansion
     echo     ^)
     echo ^)
     echo.
+    echo if "%%AUTO_MODE%%"=="0" echo  Katalog docelowy: %%XML_DIR%%
     echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef_client.py... ^>^> "%%LOG%%"
     echo echo [%%DATE%% %%TIME%%] FETCH_ARGS=!FETCH_ARGS! ^>^> "%%LOG%%"
     echo cd /d "%%NIPDIR%%"
-    echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! 2^>^>"%%LOG%%"
+    echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! -v 2^>^>"%%LOG%%"
     echo set "FETCH_ERR=!ERRORLEVEL!"
     echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
     echo.
@@ -1267,11 +1338,13 @@ setlocal DisableDelayedExpansion
     echo if exist "%%NIPDIR%%\.token" del "%%NIPDIR%%\.token" ^>nul 2^>^&1
     echo.
     echo if !FETCH_ERR! neq 0 ^(
-    echo     echo.
-    echo     echo  [BLAD] Pobieranie faktur nie powiodlo sie.
-    echo     echo         Szczegoly w logu: %%LOG%%
-    echo     echo.
     echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
+    echo     if "%%AUTO_MODE%%"=="0" ^(
+    echo         echo.
+    echo         echo  [BLAD] Pobieranie faktur nie powiodlo sie.
+    echo         echo         Szczegoly w logu: %%LOG%%
+    echo         echo.
+    echo     ^)
     echo     exit /b 1
     echo ^)
     echo.
@@ -1279,29 +1352,31 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
     echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
     echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
-    echo     echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
+    echo     if "%%AUTO_MODE%%"=="0" echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
     echo     goto :skip_pdf
     echo ^)
     echo.
-    echo echo.
-    echo echo  Generowanie PDF z pobranych faktur...
-    echo echo  ========================================
-    echo echo.
+    echo if "%%AUTO_MODE%%"=="0" ^(
+    echo     echo.
+    echo     echo  Generowanie PDF z pobranych faktur...
+    echo     echo  ========================================
+    echo     echo.
+    echo ^)
     echo.
     echo set "PDF_COUNT=0"
     echo set "PDF_ERR=0"
     echo set "PDF_SKIP=0"
     echo.
-    echo for %%%%f in ^("%%NIPDIR%%\faktury\*.xml"^) do ^(
+    echo for /R "%%XML_DIR%%" %%%%f in ^(*.xml^) do ^(
     echo     if not exist "%%%%~dpnf.pdf" ^(
-    echo         echo   PDF: %%%%~nxf
-    echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf ^>^> "%%LOG%%"
+    echo         if "%%AUTO_MODE%%"=="0" echo   PDF: %%%%~nxf
+    echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf -^> %%%%~dpnf.pdf ^>^> "%%LOG%%"
     echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
     echo         if !ERRORLEVEL! equ 0 ^(
     echo             set /a PDF_COUNT+=1
     echo         ^) else ^(
     echo             set /a PDF_ERR+=1
-    echo             echo   [*] Blad: %%%%~nxf
+    echo             if "%%AUTO_MODE%%"=="0" echo   [*] Blad: %%%%~nxf
     echo             echo [%%DATE%% %%TIME%%] BLAD PDF: %%%%~nxf ^>^> "%%LOG%%"
     echo         ^)
     echo     ^) else ^(
@@ -1309,22 +1384,60 @@ setlocal DisableDelayedExpansion
     echo     ^)
     echo ^)
     echo.
-    echo echo.
-    echo if !PDF_COUNT! gtr 0 echo  Wygenerowano !PDF_COUNT! nowych PDF.
-    echo if !PDF_ERR! gtr 0 echo  Bledy przy !PDF_ERR! plikach.
-    echo if !PDF_SKIP! gtr 0 echo  Pominieto !PDF_SKIP! - PDF juz istnieje.
-    echo if !PDF_COUNT!==0 if !PDF_ERR!==0 if !PDF_SKIP!==0 echo  Brak plikow XML w folderze faktury.
     echo echo [%%DATE%% %%TIME%%] PDF: !PDF_COUNT! nowych, !PDF_ERR! bledow, !PDF_SKIP! istniejacych ^>^> "%%LOG%%"
+    echo if "%%AUTO_MODE%%"=="0" ^(
+    echo     echo.
+    echo     if !PDF_COUNT! gtr 0 echo  Wygenerowano !PDF_COUNT! nowych PDF.
+    echo     if !PDF_ERR! gtr 0 echo  Bledy przy !PDF_ERR! plikach.
+    echo     if !PDF_SKIP! gtr 0 echo  Pominieto !PDF_SKIP! - PDF juz istnieje.
+    echo     if !PDF_COUNT!==0 if !PDF_ERR!==0 if !PDF_SKIP!==0 echo  Brak plikow XML w folderze %%XML_DIR%%.
+    echo ^)
     echo.
     echo :skip_pdf
     echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
-    echo echo.
-    echo echo  ========================================
-    echo echo  Gotowe.
-    echo echo  Log: %%LOG%%
+    echo if "%%AUTO_MODE%%"=="0" ^(
+    echo     echo.
+    echo     echo  ========================================
+    echo     echo  Gotowe.
+    echo     echo  Katalog faktur: %%XML_DIR%%
+    echo     echo  Log: %%LOG%%
+    echo ^)
 ) > "%LAUNCHER%"
 endlocal
 echo        Launcher: !NIP_DIR!\pobierz-faktury.bat
+
+:: --- Pytanie o harmonogram zadan (Task Scheduler) ---
+echo.
+echo  Czy dodac automatyczne pobieranie faktur do Harmonogramu zadan?
+echo  Faktury beda pobierane co 60 minut w tle (tryb --auto).
+echo.
+echo    [1] Nie  (domyslnie - auto za 15s)
+echo    [2] Tak - dodaj do Harmonogramu zadan
+echo.
+choice /c 12 /t 15 /d 1 /n /m "  Wybierz [1-2]: "
+set "SCHED_CHOICE=!ERRORLEVEL!"
+
+if "!SCHED_CHOICE!"=="2" (
+    set "TASK_NAME=KSeF-Faktury-!CONTEXT_NIP!"
+    echo.
+    echo        Tworzenie zadania: !TASK_NAME!
+    echo        Interwat: co 60 minut
+    echo        Skrypt: !NIP_DIR!\pobierz-faktury.bat --auto
+    echo.
+    schtasks /create /tn "!TASK_NAME!" /tr "\"!NIP_DIR!\pobierz-faktury.bat\" --auto" /sc MINUTE /mo 60 /f >nul 2>&1
+    set "SCHED_ERR=!ERRORLEVEL!"
+    if !SCHED_ERR! equ 0 (
+        echo        Zadanie "!TASK_NAME!" utworzone pomyslnie.
+        echo        Faktury beda pobierane automatycznie co 60 minut.
+        echo [%DATE% %TIME%] Harmonogram zadan: !TASK_NAME! co 60 min >> "%LOG_FILE%"
+    ) else (
+        echo  [UWAGA] Nie udalo sie utworzyc zadania w Harmonogramie.
+        echo          Mozesz dodac recznie: Harmonogram zadan ^> Nowe zadanie
+        echo          Program: "!NIP_DIR!\pobierz-faktury.bat" --auto
+        echo          Wyzwalacz: co 60 minut
+        echo [%DATE% %TIME%] BLAD schtasks: kod !SCHED_ERR! >> "%LOG_FILE%"
+    )
+)
 
 :: ============================================================================
 :: Sprzatanie
@@ -1384,7 +1497,7 @@ set "PS_SUMMARY=%TEMP%\ksef-summary.ps1"
     echo $p3 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m3.Length^) / 2^)^)
     echo Write-Host "$sp$p3$m3" -ForegroundColor Cyan
     echo Write-Host ''
-    echo $m4 = 'Faktury zapisza sie w folderze: !XML_DIR!'
+    echo $m4 = 'Faktury: !XML_DIR!'
     echo $p4 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m4.Length^) / 2^)^)
     echo Write-Host "$sp$p4$m4" -ForegroundColor Gray
     echo Write-Host ''

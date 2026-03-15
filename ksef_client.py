@@ -653,6 +653,55 @@ def decrypt_password(encrypted: str, key_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Segregacja faktur do podfolderów ROK/MIESIAC
+# ---------------------------------------------------------------------------
+
+import re
+
+_KSEF_NR_DATE_RE = re.compile(r"-(\d{8})-")
+
+
+def _invoice_subdir(
+    nip: str,
+    inv_meta: dict,
+    ksef_nr: str,
+    logger: logging.Logger,
+) -> str:
+    """Zwraca podfolder NIP/ROK/MIESIAC na podstawie daty wystawienia faktury.
+
+    Struktura: {NIP}/{ROK}/{MIESIAC:02d}
+    Zapobiega mieszaniu dokumentow przy wielu NIP-ach w jednym folderze.
+
+    Kolejnosc zrodel daty:
+    1. invoicingDate z metadanych query (data wystawienia = data sprzedazy)
+    2. Data osadzona w numerze KSeF (format: NIP-RRRRMMDD-...)
+    3. Fallback: biezacy rok/miesiac
+    """
+    # 1. invoicingDate z metadanych (format ISO: "2026-03-15" lub "2026-03-15T...")
+    inv_date_str = inv_meta.get("invoicingDate", "")
+    if inv_date_str:
+        try:
+            dt = datetime.date.fromisoformat(inv_date_str[:10])
+            return f"{nip}/{dt.year}/{dt.month:02d}"
+        except (ValueError, IndexError):
+            pass
+
+    # 2. Data z numeru KSeF (np. "1234567890-20260315-ABC...")
+    m = _KSEF_NR_DATE_RE.search(ksef_nr)
+    if m:
+        try:
+            dt = datetime.datetime.strptime(m.group(1), "%Y%m%d").date()
+            return f"{nip}/{dt.year}/{dt.month:02d}"
+        except ValueError:
+            pass
+
+    # 3. Fallback
+    logger.warning("Nie mozna ustalic daty faktury %s — uzyto biezacej daty", ksef_nr)
+    today = datetime.date.today()
+    return f"{nip}/{today.year}/{today.month:02d}"
+
+
+# ---------------------------------------------------------------------------
 # CLI — samodzielne użycie
 # ---------------------------------------------------------------------------
 
@@ -759,6 +808,7 @@ def _cli() -> None:
     date_to = datetime.date.today()
     date_from = date_to - datetime.timedelta(days=args.days)
 
+    logger.info("Katalog docelowy: %s", output_dir.resolve())
     logger.info("Wyszukiwanie faktur od %s do %s...", date_from, date_to)
 
     total_downloaded = 0
@@ -787,9 +837,14 @@ def _cli() -> None:
             if not ksef_nr:
                 continue
 
+            # Ustal podfolder ROK/MIESIAC na podstawie daty wystawienia
+            inv_subdir = _invoice_subdir(args.nip, inv, ksef_nr, logger)
+            target_dir = output_dir / inv_subdir
+            target_dir.mkdir(parents=True, exist_ok=True)
+
             # Nazwa pliku: numer KSeF (bezpieczna nazwa)
             safe_name = ksef_nr.replace("/", "_").replace("\\", "_")
-            xml_path = output_dir / f"{safe_name}.xml"
+            xml_path = target_dir / f"{safe_name}.xml"
 
             if xml_path.exists():
                 total_skipped += 1
@@ -799,7 +854,7 @@ def _cli() -> None:
                 xml_bytes = client.download_invoice_xml(ksef_nr)
                 xml_path.write_bytes(xml_bytes)
                 total_downloaded += 1
-                logger.info("Pobrano: %s", ksef_nr)
+                logger.info("Pobrano: %s -> %s (%s)", ksef_nr, inv_subdir, xml_path)
             except KSeFError as exc:
                 logger.error("Błąd pobierania %s: %s", ksef_nr, exc)
 

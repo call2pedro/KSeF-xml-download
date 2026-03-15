@@ -1849,7 +1849,7 @@ def _process_directory(
         skip_existing: If True, skip files that already have a PDF.
         ksef_nr: Optional KSeF reference number for invoices.
     """
-    xml_files = sorted(dir_path.glob("*.xml"))
+    xml_files = sorted(dir_path.rglob("*.xml"))
     if not xml_files:
         print(f"Brak plikow XML w {dir_path}")
         return
