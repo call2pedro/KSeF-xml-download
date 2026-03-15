@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -94,6 +95,17 @@ class KSeFClient:
             raise ValueError(f"Nieznane srodowisko: {environment}. Dostepne: {list(KSEF_URLS.keys())}")
 
         self.nip = nip
+
+        # Walidacja NIP
+        if not re.fullmatch(r'\d{10}', nip):
+            raise ValueError(f"Nieprawidlowy NIP: oczekiwano 10 cyfr, otrzymano '{nip}'")
+
+        # Suma kontrolna NIP (modulo 11, wagi: 6,5,7,2,3,4,5,6,7)
+        weights = (6, 5, 7, 2, 3, 4, 5, 6, 7)
+        checksum = sum(int(nip[i]) * weights[i] for i in range(9)) % 11
+        if checksum != int(nip[9]):
+            raise ValueError(f"Nieprawidlowa suma kontrolna NIP: {nip}")
+
         self.environment = environment
         self.base_url = KSEF_URLS[environment]
         self.timeout = timeout
@@ -106,6 +118,13 @@ class KSeFClient:
 
         self._session = requests.Session()
         self._session.headers.update({"Accept": "application/json"})
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._session.close()
+        return False
 
     # ------------------------------------------------------------------
     # Żądania HTTP
@@ -158,7 +177,7 @@ class KSeFClient:
                 detail_list = exc_info.get("exceptionDetailList", [])
                 if detail_list:
                     msg = detail_list[0].get("exceptionDescription", msg)
-            except (ValueError, KeyError):
+            except ValueError:
                 data = {"raw": resp.text[:500]}
             raise KSeFError(msg, resp.status_code, data)
 
@@ -355,7 +374,7 @@ class KSeFClient:
         data = path.read_bytes()
         try:
             return x509.load_pem_x509_certificate(data, default_backend())
-        except Exception:
+        except ValueError:
             return x509.load_der_x509_certificate(data, default_backend())
 
     def _load_private_key(self, key_path: str, password: str = None):
@@ -377,10 +396,10 @@ class KSeFClient:
                     return serialization.load_pem_private_key(
                         data, password=pwd_input.encode("utf-8"), backend=default_backend()
                     )
-                except Exception as exc2:
+                except (ValueError, TypeError) as exc2:
                     raise KSeFError(f"Bledne haslo klucza prywatnego: {exc2}")
             raise KSeFError("Klucz prywatny jest zaszyfrowany - podaj haslo (--password, --password-enc lub --password-file)")
-        except Exception as exc:
+        except (ValueError, TypeError) as exc:
             raise KSeFError(f"Blad ladowania klucza prywatnego: {exc}")
 
     def _build_auth_token_request_xml(self, challenge: str, timestamp: str = None) -> str:
@@ -604,8 +623,8 @@ class KSeFClient:
         if self.access_token:
             try:
                 self._request("DELETE", "/auth/sessions/current")
-            except KSeFError:
-                pass
+            except KSeFError as e:
+                self.logger.debug("Zamykanie sesji: %s", e)
             self.access_token = None
             self.authentication_token = None
             self.refresh_token = None
@@ -623,14 +642,19 @@ def generate_aes_key(key_path: str) -> bytes:
     return key
 
 
+def _load_aes_key(key_path: str) -> bytes:
+    """Load and validate AES-256 key from file."""
+    key = Path(key_path).read_bytes()
+    if len(key) != 32:
+        raise ValueError(f"Klucz AES musi miec 32 bajty, ma {len(key)}")
+    return key
+
+
 def encrypt_password(password: str, key_path: str) -> str:
     """Szyfruj hasło AES-256-GCM. Zwraca base64(nonce + ciphertext + tag)."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    key = Path(key_path).read_bytes()
-    if len(key) != 32:
-        raise ValueError(f"Klucz AES musi miec 32 bajty, ma {len(key)}")
-
+    key = _load_aes_key(key_path)
     nonce = os.urandom(12)
     aesgcm = AESGCM(key)
     ct = aesgcm.encrypt(nonce, password.encode("utf-8"), None)
@@ -641,9 +665,7 @@ def decrypt_password(encrypted: str, key_path: str) -> str:
     """Odszyfruj hasło AES-256-GCM z base64(nonce + ciphertext + tag)."""
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-    key = Path(key_path).read_bytes()
-    if len(key) != 32:
-        raise ValueError(f"Klucz AES musi miec 32 bajty, ma {len(key)}")
+    key = _load_aes_key(key_path)
 
     raw = base64.b64decode(encrypted)
     nonce = raw[:12]
@@ -655,8 +677,6 @@ def decrypt_password(encrypted: str, key_path: str) -> str:
 # ---------------------------------------------------------------------------
 # Segregacja faktur do podfolderów ROK/MIESIAC
 # ---------------------------------------------------------------------------
-
-import re
 
 _KSEF_NR_DATE_RE = re.compile(r"-(\d{8})-")
 
@@ -705,103 +725,39 @@ def _invoice_subdir(
 # CLI — samodzielne użycie
 # ---------------------------------------------------------------------------
 
-def _cli() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Klient KSeF — pobieranie faktur XML",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument("--nip", required=True, help="NIP firmy")
-    parser.add_argument("--env", choices=["test", "demo", "prod"], default="prod", help="Środowisko KSeF")
-    parser.add_argument("--output-dir", default="faktury", help="Katalog na pliki XML")
-    parser.add_argument("--subject", choices=["Subject1", "Subject2"], default="Subject2",
-                        help="Subject1=wystawione, Subject2=otrzymane")
-    parser.add_argument("--days", type=int, default=30, help="Ile dni wstecz")
-    parser.add_argument("-v", "--verbose", action="store_true")
-
-    auth_group = parser.add_mutually_exclusive_group(required=False)
-    auth_group.add_argument("--token", help="Token KSeF")
-    auth_group.add_argument("--token-file", help="Plik z tokenem KSeF")
-    auth_group.add_argument("--cert", help="Ścieżka do certyfikatu PEM")
-
-    parser.add_argument("--key", help="Ścieżka do klucza prywatnego PEM (dla --cert)")
-    parser.add_argument("--password", help="Hasło klucza prywatnego (dla --cert)")
-    parser.add_argument("--password-file", help="Plik z hasłem klucza prywatnego")
-    parser.add_argument("--password-enc", help="Zaszyfrowane hasło AES-256-GCM (base64)")
-    parser.add_argument("--password-keyfile", help="Plik z kluczem AES-256 (dla --password-enc)")
-
-    # Tryb pomocniczy: szyfrowanie hasła
-    parser.add_argument("--encrypt-password", metavar="PASSWORD",
-                        help="Zaszyfruj hasło i wypisz na stdout (tryb pomocniczy)")
-    parser.add_argument("--encrypt-password-file", metavar="PATH",
-                        help="Jak --encrypt-password ale czyta hasło z pliku (bezpieczniejsze)")
-    parser.add_argument("--generate-keyfile", metavar="PATH",
-                        help="Wygeneruj klucz AES-256 do pliku (dla --encrypt-password)")
-
-    args = parser.parse_args()
-
-    # Tryb szyfrowania hasła (helper dla instalatora)
-    password_to_encrypt = args.encrypt_password
-    if not password_to_encrypt and args.encrypt_password_file:
-        try:
-            password_to_encrypt = Path(args.encrypt_password_file).read_text(encoding="utf-8").strip()
-        except Exception as e:
-            print(f"BLAD: Nie mozna odczytac pliku z haslem: {e}", file=sys.stderr)
+def _resolve_password(args, logger) -> str | None:
+    """Resolve certificate key password from CLI args."""
+    if args.password:
+        logger.warning("UWAGA: --password jest przestarzale. Haslo jest widoczne w liscie procesow. Uzyj --password-enc lub --password-file.")
+        return args.password
+    if args.password_enc:
+        if not args.password_keyfile:
+            print("BLAD: --password-keyfile wymagany z --password-enc", file=sys.stderr)
             sys.exit(1)
-    if password_to_encrypt:
-        if not args.generate_keyfile and not args.password_keyfile:
-            print("BLAD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
+        return decrypt_password(args.password_enc, args.password_keyfile)
+    if args.password_file:
+        return Path(args.password_file).read_text(encoding="utf-8").strip()
+    return None
+
+
+def _resolve_token(args) -> str:
+    """Resolve KSeF token from CLI args."""
+    if args.token:
+        return args.token
+    if args.token_enc:
+        keyfile = args.token_keyfile or args.password_keyfile
+        if not keyfile:
+            print("BLAD: --token-keyfile wymagany z --token-enc", file=sys.stderr)
             sys.exit(1)
-        keyfile = args.generate_keyfile or args.password_keyfile
-        if args.generate_keyfile:
-            generate_aes_key(keyfile)
-        encrypted = encrypt_password(password_to_encrypt, keyfile)
-        print(encrypted)
-        sys.exit(0)
+        return decrypt_password(args.token_enc, keyfile)
+    if args.token_file:
+        return Path(args.token_file).read_text(encoding="utf-8").strip()
+    print("BLAD: Podaj --token, --token-file, --token-enc lub --cert", file=sys.stderr)
+    sys.exit(1)
 
-    # Walidacja: tryb normalny wymaga metody auth
-    if not args.token and not args.token_file and not args.cert:
-        print("BLAD: Podaj --token, --token-file lub --cert", file=sys.stderr)
-        sys.exit(1)
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
-    logger = logging.getLogger("ksef_client")
-
-    client = KSeFClient(nip=args.nip, environment=args.env, logger=logger)
-
-    # Uwierzytelnianie
-    if args.cert:
-        if not args.key:
-            print("BLAD: --key jest wymagany razem z --cert", file=sys.stderr)
-            sys.exit(1)
-
-        password = None
-        if args.password:
-            password = args.password
-        elif args.password_enc:
-            if not args.password_keyfile:
-                print("BLAD: --password-keyfile wymagany z --password-enc", file=sys.stderr)
-                sys.exit(1)
-            password = decrypt_password(args.password_enc, args.password_keyfile)
-        elif args.password_file:
-            password = Path(args.password_file).read_text(encoding="utf-8").strip()
-
-        client.authenticate_certificate(args.cert, args.key, password)
-    else:
-        token = args.token
-        if args.token_file:
-            token = Path(args.token_file).read_text(encoding="utf-8").strip()
-        if not token:
-            print("BLAD: Podaj --token lub --token-file", file=sys.stderr)
-            sys.exit(1)
-
-        client.authenticate_token(token)
-
-    # Pobieranie faktur
+def _download_all_invoices(client, args, logger) -> None:
+    """Download all invoices with pagination and file organization."""
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -843,7 +799,10 @@ def _cli() -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
 
             # Nazwa pliku: numer KSeF (bezpieczna nazwa)
-            safe_name = ksef_nr.replace("/", "_").replace("\\", "_")
+            safe_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', ksef_nr)
+            safe_name = safe_name.replace('..', '__')
+            if len(safe_name) > 200:
+                safe_name = safe_name[:200]
             xml_path = target_dir / f"{safe_name}.xml"
 
             if xml_path.exists():
@@ -866,8 +825,94 @@ def _cli() -> None:
 
     logger.info("Zakończono. Pobrano: %d, pominięto: %d", total_downloaded, total_skipped)
 
+
+def _cli() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Klient KSeF — pobieranie faktur XML",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--nip", required=True, help="NIP firmy")
+    parser.add_argument("--env", choices=["test", "demo", "prod"], default="prod", help="Środowisko KSeF")
+    parser.add_argument("--output-dir", default="faktury", help="Katalog na pliki XML")
+    parser.add_argument("--subject", choices=["Subject1", "Subject2"], default="Subject2",
+                        help="Subject1=wystawione, Subject2=otrzymane")
+    parser.add_argument("--days", type=int, default=30, help="Ile dni wstecz")
+    parser.add_argument("-v", "--verbose", action="store_true")
+
+    auth_group = parser.add_mutually_exclusive_group(required=False)
+    auth_group.add_argument("--token", help="Token KSeF")
+    auth_group.add_argument("--token-file", help="Plik z tokenem KSeF")
+    auth_group.add_argument("--token-enc", help="Zaszyfrowany token KSeF AES-256-GCM (base64)")
+    auth_group.add_argument("--cert", help="Ścieżka do certyfikatu PEM")
+
+    parser.add_argument("--key", help="Ścieżka do klucza prywatnego PEM (dla --cert)")
+    parser.add_argument("--password", help="[PRZESTARZALE] Hasło widoczne w procesach. Użyj --password-enc lub --password-file")
+    parser.add_argument("--password-file", help="Plik z hasłem klucza prywatnego")
+    parser.add_argument("--password-enc", help="Zaszyfrowane hasło AES-256-GCM (base64)")
+    parser.add_argument("--password-keyfile", help="Plik z kluczem AES-256 (dla --password-enc lub --token-enc)")
+    parser.add_argument("--token-keyfile", help="Plik z kluczem AES-256 (dla --token-enc)")
+
+    # Tryb pomocniczy: szyfrowanie hasła
+    parser.add_argument("--encrypt-password", metavar="PASSWORD",
+                        help="Zaszyfruj hasło i wypisz na stdout (tryb pomocniczy)")
+    parser.add_argument("--encrypt-password-file", metavar="PATH",
+                        help="Jak --encrypt-password ale czyta hasło z pliku (bezpieczniejsze)")
+    parser.add_argument("--generate-keyfile", metavar="PATH",
+                        help="Wygeneruj klucz AES-256 do pliku (dla --encrypt-password)")
+
+    args = parser.parse_args()
+
+    # Tryb szyfrowania hasła (helper dla instalatora)
+    password_to_encrypt = args.encrypt_password
+    if not password_to_encrypt and args.encrypt_password_file:
+        try:
+            password_to_encrypt = Path(args.encrypt_password_file).read_text(encoding="utf-8").strip()
+        except Exception as e:
+            print(f"BLAD: Nie mozna odczytac pliku z haslem: {e}", file=sys.stderr)
+            sys.exit(1)
+    if password_to_encrypt:
+        if not args.generate_keyfile and not args.password_keyfile:
+            print("BLAD: Podaj --generate-keyfile lub --password-keyfile", file=sys.stderr)
+            sys.exit(1)
+        keyfile = args.generate_keyfile or args.password_keyfile
+        if args.generate_keyfile:
+            generate_aes_key(keyfile)
+        encrypted = encrypt_password(password_to_encrypt, keyfile)
+        print(encrypted)
+        sys.exit(0)
+
+    # Walidacja: tryb normalny wymaga metody auth
+    if not args.token and not args.token_file and not args.token_enc and not args.cert:
+        print("BLAD: Podaj --token, --token-file, --token-enc lub --cert", file=sys.stderr)
+        sys.exit(1)
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    logger = logging.getLogger("ksef_client")
+
+    client = KSeFClient(nip=args.nip, environment=args.env, logger=logger)
+
+    # Uwierzytelnianie
+    if args.cert:
+        if not args.key:
+            print("BLAD: --key jest wymagany razem z --cert", file=sys.stderr)
+            sys.exit(1)
+        password = _resolve_password(args, logger)
+        client.authenticate_certificate(args.cert, args.key, password)
+    else:
+        token = _resolve_token(args)
+        client.authenticate_token(token)
+
+    # Pobieranie faktur
+    _download_all_invoices(client, args, logger)
+
     # Zamknij sesję
     client.terminate_session()
+    client._session.close()
 
 
 if __name__ == "__main__":
