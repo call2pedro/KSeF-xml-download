@@ -1,0 +1,19 @@
+[project]
+name = "ksef-xml-download"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "cryptography>=46.0.5",
+    "defusedxml>=0.7.1",
+    "lxml>=6.0.2",
+    "pillow>=12.1.1",
+    "qrcode>=7.4",
+    "reportlab>=4.0",
+    "requests>=2.32.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

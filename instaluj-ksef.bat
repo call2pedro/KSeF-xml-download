@@ -10,6 +10,15 @@ if not defined _KSEF_WRAPPED (
 
 setlocal EnableDelayedExpansion
 
+:: Kolory ANSI (Windows 10+): info, prompt, question, password, error
+for /f %%e in ('"prompt $E & for %%b in (1) do rem"') do set "ESC=%%e"
+set "C_I=!ESC![96m"
+set "C_P=!ESC![92m"
+set "C_Q=!ESC![93m"
+set "C_PW=!ESC![95m"
+set "C_E=!ESC![91m"
+set "C_0=!ESC![0m"
+
 :: ============================================================================
 :: Instalator KSeF CLI + PDF Generator dla Windows
 :: Pobiera Python embeddable + ksef-cli + ksef_pdf.py (reportlab)
@@ -31,8 +40,8 @@ set "TEMP_DIR=%TEMP%\ksef-install-%RANDOM%"
 set "LOG_FILE=%~dp0instaluj-ksef-debug.log"
 echo =============================== > "%LOG_FILE%"
 echo [%DATE% %TIME%] Instalator KSeF CLI v%VERSION% >> "%LOG_FILE%"
-echo [%DATE% %TIME%] COMPUTERNAME=%COMPUTERNAME% >> "%LOG_FILE%"
-echo [%DATE% %TIME%] USERNAME=%USERNAME% >> "%LOG_FILE%"
+echo [%DATE% %TIME%] COMPUTERNAME=%COMPUTERNAME:~0,3%*** >> "%LOG_FILE%"
+echo [%DATE% %TIME%] USERNAME=%USERNAME:~0,3%*** >> "%LOG_FILE%"
 echo [%DATE% %TIME%] LOCALAPPDATA=%LOCALAPPDATA% >> "%LOG_FILE%"
 echo [%DATE% %TIME%] TEMP=%TEMP% >> "%LOG_FILE%"
 echo [%DATE% %TIME%] INSTALL_DIR=%INSTALL_DIR% >> "%LOG_FILE%"
@@ -93,7 +102,7 @@ echo [%DATE% %TIME%] Sprawdzanie PowerShell... >> "%LOG_FILE%"
 where powershell >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo [%DATE% %TIME%] BLAD: PowerShell niedostepny >> "%LOG_FILE%"
-    echo  [BLAD] PowerShell nie jest dostepny.
+    echo  !C_E![BLAD]!C_0! PowerShell nie jest dostepny.
     echo         Wymagany Windows 7 SP1 lub nowszy.
     goto :error_exit
 )
@@ -104,7 +113,7 @@ powershell -NoProfile -Command "Write-Output ('PS: ' + $PSVersionTable.PSVersion
 
 :: Sprawdz czy juz zainstalowano
 if exist "%CLI_DIR%\ksef\fetch_invoices.py" (
-    echo  [INFO] Wykryto istniejaca instalacje w %INSTALL_DIR%
+    echo  !C_I![INFO]!C_0! Wykryto istniejaca instalacje w %INSTALL_DIR%
     echo.
     set /p "REINSTALL=  Nadpisac instalacje? (T/N) [N]: "
     if /i "!REINSTALL!" neq "T" (
@@ -114,7 +123,7 @@ if exist "%CLI_DIR%\ksef\fetch_invoices.py" (
     )
     echo.
 ) else if exist "%CLI_DIR%\fetch_invoices.py" (
-    echo  [INFO] Wykryto istniejaca instalacje w %INSTALL_DIR%
+    echo  !C_I![INFO]!C_0! Wykryto istniejaca instalacje w %INSTALL_DIR%
     echo.
     set /p "REINSTALL=  Nadpisac instalacje? (T/N) [N]: "
     if /i "!REINSTALL!" neq "T" (
@@ -130,7 +139,7 @@ echo [%DATE% %TIME%] Tworzenie TEMP_DIR: %TEMP_DIR% >> "%LOG_FILE%"
 mkdir "%TEMP_DIR%" >nul 2>&1
 if not exist "%TEMP_DIR%" (
     echo [%DATE% %TIME%] BLAD: TEMP_DIR nie utworzony >> "%LOG_FILE%"
-    echo  [BLAD] Nie mozna utworzyc katalogu tymczasowego.
+    echo  !C_E![BLAD]!C_0! Nie mozna utworzyc katalogu tymczasowego.
     goto :error_exit
 )
 echo [%DATE% %TIME%] TEMP_DIR OK >> "%LOG_FILE%"
@@ -139,7 +148,7 @@ echo [%DATE% %TIME%] TEMP_DIR OK >> "%LOG_FILE%"
 :: KROK 1/7: Detekcja architektury
 :: ============================================================================
 echo [%DATE% %TIME%] [1/7] START >> "%LOG_FILE%"
-echo  [1/7] Wykrywanie architektury systemu...
+echo  !C_I![1/7]!C_0! Wykrywanie architektury systemu...
 
 set "PY_ARCH=amd64"
 set "PDF_AVAILABLE=1"
@@ -166,7 +175,7 @@ echo        Python:       %PY_ARCH%
 :: ============================================================================
 echo [%DATE% %TIME%] [2/7] START >> "%LOG_FILE%"
 echo.
-echo  [2/7] Pobieranie Python %PYTHON_VER% (embeddable, %PY_ARCH%)...
+echo  !C_I![2/7]!C_0! Pobieranie Python %PYTHON_VER% (embeddable, %PY_ARCH%)...
 
 set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VER%/python-%PYTHON_VER%-embed-%PY_ARCH%.zip"
 set "PYTHON_ZIP=%TEMP_DIR%\python-embed.zip"
@@ -178,66 +187,38 @@ echo [%DATE% %TIME%] [2/7] ZIP=%PYTHON_ZIP% >> "%LOG_FILE%"
 
 echo        URL: %PYTHON_URL%
 
-:: Metoda 1: curl.exe (Windows 10+, z paskiem postepu)
-where curl.exe >nul 2>&1
-if !ERRORLEVEL! neq 0 goto :py_dl_powershell
-echo [%DATE% %TIME%] [2/7] Metoda: curl.exe >> "%LOG_FILE%"
-echo        Metoda: curl.exe
-curl.exe -L --progress-bar --connect-timeout 30 -o "%PYTHON_ZIP%" "%PYTHON_URL%"
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] curl ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :python_dl_ok
-echo [%DATE% %TIME%] [2/7] curl nie powiodl sie >> "%LOG_FILE%"
-del "%PYTHON_ZIP%" >nul 2>&1
-
-:py_dl_powershell
-:: Metoda 2: PowerShell
-echo [%DATE% %TIME%] [2/7] Metoda: PowerShell >> "%LOG_FILE%"
-echo        Metoda: PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_ZIP%' -UseBasicParsing } catch { exit 1 }"
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] PowerShell ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :python_dl_ok
-echo [%DATE% %TIME%] [2/7] PowerShell nie powiodl sie >> "%LOG_FILE%"
-del "%PYTHON_ZIP%" >nul 2>&1
-
-:: Metoda 3: certutil
-echo [%DATE% %TIME%] [2/7] Metoda: certutil >> "%LOG_FILE%"
-echo        Metoda: certutil
-certutil -urlcache -split -f "%PYTHON_URL%" "%PYTHON_ZIP%" >> "%LOG_FILE%" 2>&1
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] certutil ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :python_dl_ok
-
-:: Wszystkie metody zawiodly
-echo [%DATE% %TIME%] [2/7] BLAD: Wszystkie metody pobierania zawiodly >> "%LOG_FILE%"
-echo [%DATE% %TIME%] [2/7] Diagnostyka sieci: >> "%LOG_FILE%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Output ('TLS: ' + [Net.ServicePointManager]::SecurityProtocol)" >> "%LOG_FILE%" 2>&1
-echo  [BLAD] Nie udalo sie pobrac Python. Kod: !DL_ERR!
-echo         Sprawdz polaczenie z internetem.
-echo         Szczegoly w logu: %LOG_FILE%
-goto :error_exit
+call :download_file "%PYTHON_URL%" "%PYTHON_ZIP%" "2/7"
+if "!DL_RESULT!"=="1" (
+    echo [%DATE% %TIME%] [2/7] Diagnostyka sieci: >> "%LOG_FILE%"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Write-Output ('TLS: ' + [Net.ServicePointManager]::SecurityProtocol)" >> "%LOG_FILE%" 2>&1
+    echo  !C_E![BLAD]!C_0! Nie udalo sie pobrac Python.
+    echo         Sprawdz polaczenie z internetem.
+    echo         Szczegoly w logu: %LOG_FILE%
+    goto :error_exit
+)
 :python_dl_ok
 
 :: Sprawdz czy plik istnieje i ma rozmiar
 echo [%DATE% %TIME%] [2/7] Sprawdzanie pliku ZIP... >> "%LOG_FILE%"
 if not exist "%PYTHON_ZIP%" (
     echo [%DATE% %TIME%] [2/7] BLAD: ZIP nie istnieje >> "%LOG_FILE%"
-    echo  [BLAD] Plik Python nie zostal zapisany.
+    echo  !C_E![BLAD]!C_0! Plik Python nie zostal zapisany.
     goto :error_exit
 )
 for %%F in ("%PYTHON_ZIP%") do set "PYZIP_SIZE=%%~zF"
 echo [%DATE% %TIME%] [2/7] Rozmiar ZIP: !PYZIP_SIZE! bajtow >> "%LOG_FILE%"
 if "!PYZIP_SIZE!"=="" (
     echo [%DATE% %TIME%] [2/7] BLAD: Rozmiar pusty >> "%LOG_FILE%"
-    echo  [BLAD] Pobrany plik Python jest pusty.
+    echo  !C_E![BLAD]!C_0! Pobrany plik Python jest pusty.
     goto :error_exit
 )
 if !PYZIP_SIZE! GEQ 1000000 goto :python_size_ok
 echo [%DATE% %TIME%] [2/7] BLAD: Za maly - !PYZIP_SIZE! bajtow >> "%LOG_FILE%"
-echo  [BLAD] Pobrany plik Python jest za maly - !PYZIP_SIZE! bajtow.
+echo  !C_E![BLAD]!C_0! Pobrany plik Python jest za maly - !PYZIP_SIZE! bajtow.
 goto :error_exit
 :python_size_ok
+echo [%DATE% %TIME%] [2/7] SHA-256: >> "%LOG_FILE%"
+certutil -hashfile "%PYTHON_ZIP%" SHA256 >> "%LOG_FILE%" 2>&1
 
 :: Rozpakuj Python
 echo        Rozpakowywanie...
@@ -248,7 +229,7 @@ set "EX_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [2/7] Expand-Archive ERRORLEVEL=!EX_ERR! >> "%LOG_FILE%"
 if !EX_ERR! neq 0 (
     echo [%DATE% %TIME%] [2/7] BLAD: Rozpakowywanie >> "%LOG_FILE%"
-    echo  [BLAD] Nie udalo sie rozpakowac Python.
+    echo  !C_E![BLAD]!C_0! Nie udalo sie rozpakowac Python.
     goto :error_exit
 )
 
@@ -258,7 +239,7 @@ if not exist "%PYTHON_DIR%\python.exe" (
     echo [%DATE% %TIME%] [2/7] BLAD: python.exe nie znaleziono >> "%LOG_FILE%"
     echo [%DATE% %TIME%] [2/7] Zawartosc %PYTHON_DIR%: >> "%LOG_FILE%"
     dir "%PYTHON_DIR%" >> "%LOG_FILE%" 2>&1
-    echo  [BLAD] python.exe nie znaleziono po rozpakowaniu.
+    echo  !C_E![BLAD]!C_0! python.exe nie znaleziono po rozpakowaniu.
     goto :error_exit
 )
 echo [%DATE% %TIME%] [2/7] python.exe OK >> "%LOG_FILE%"
@@ -272,39 +253,19 @@ echo [%DATE% %TIME%] [2/7] _pth zaktualizowany: dodano import site + %CLI_DIR% +
 goto :pth_done
 :skip_pth
 echo [%DATE% %TIME%] [2/7] UWAGA: _pth nie znaleziony >> "%LOG_FILE%"
-echo  [UWAGA] Plik _pth nie znaleziony, kontynuowanie...
+echo  !C_Q![UWAGA]!C_0! Plik _pth nie znaleziony, kontynuowanie...
 :pth_done
 
 :: Pobierz get-pip.py
 echo        Pobieranie pip...
 echo [%DATE% %TIME%] [2/7] Pobieranie get-pip.py... >> "%LOG_FILE%"
 
-:: curl
-where curl.exe >nul 2>&1
-if !ERRORLEVEL! neq 0 goto :pip_dl_ps
-curl.exe -L -s --connect-timeout 30 -o "%GETPIP_FILE%" "%GETPIP_URL%"
-set "GP_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] curl get-pip ERRORLEVEL=!GP_ERR! >> "%LOG_FILE%"
-if !GP_ERR! equ 0 goto :pip_dl_done
-del "%GETPIP_FILE%" >nul 2>&1
-
-:pip_dl_ps
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%GETPIP_URL%' -OutFile '%GETPIP_FILE%' -UseBasicParsing } catch { exit 1 }"
-set "GP_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] PowerShell get-pip ERRORLEVEL=!GP_ERR! >> "%LOG_FILE%"
-if !GP_ERR! equ 0 goto :pip_dl_done
-del "%GETPIP_FILE%" >nul 2>&1
-
-:: certutil
-certutil -urlcache -split -f "%GETPIP_URL%" "%GETPIP_FILE%" >> "%LOG_FILE%" 2>&1
-set "GP_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [2/7] certutil get-pip ERRORLEVEL=!GP_ERR! >> "%LOG_FILE%"
-if !GP_ERR! equ 0 goto :pip_dl_done
-
-echo [%DATE% %TIME%] [2/7] BLAD: get-pip.py >> "%LOG_FILE%"
-echo  [BLAD] Nie udalo sie pobrac get-pip.py. Kod: !GP_ERR!
-goto :error_exit
-
+call :download_file "%GETPIP_URL%" "%GETPIP_FILE%" "2/7"
+if "!DL_RESULT!"=="1" (
+    echo [%DATE% %TIME%] [2/7] BLAD: get-pip.py >> "%LOG_FILE%"
+    echo  !C_E![BLAD]!C_0! Nie udalo sie pobrac get-pip.py.
+    goto :error_exit
+)
 :pip_dl_done
 echo [%DATE% %TIME%] [2/7] Uruchamianie get-pip.py... >> "%LOG_FILE%"
 "%PYTHON_DIR%\python.exe" "%GETPIP_FILE%" --no-warn-script-location >> "%LOG_FILE%" 2>&1
@@ -312,7 +273,7 @@ set "PIP_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [2/7] get-pip.py ERRORLEVEL=!PIP_ERR! >> "%LOG_FILE%"
 if !PIP_ERR! neq 0 (
     echo [%DATE% %TIME%] [2/7] BLAD: pip >> "%LOG_FILE%"
-    echo  [BLAD] Instalacja pip nie powiodla sie.
+    echo  !C_E![BLAD]!C_0! Instalacja pip nie powiodla sie.
     goto :error_exit
 )
 
@@ -324,7 +285,7 @@ echo        Python %PYTHON_VER% zainstalowany pomyslnie.
 :: ============================================================================
 echo [%DATE% %TIME%] [3/7] START >> "%LOG_FILE%"
 echo.
-echo  [3/7] Pobieranie generatora PDF (Python/reportlab)...
+echo  !C_I![3/7]!C_0! Pobieranie generatora PDF (Python/reportlab)...
 
 set "SELF_ZIP=%TEMP_DIR%\ksef-self.zip"
 set "SELF_BRANCH=main"
@@ -333,63 +294,38 @@ set "SELF_URL=https://github.com/%GITHUB_REPO_SELF%/archive/refs/heads/main.zip"
 echo        URL: %SELF_URL%
 echo [%DATE% %TIME%] [3/7] URL=%SELF_URL% >> "%LOG_FILE%"
 
-:: Metoda 1: curl
-where curl.exe >nul 2>&1
-if !ERRORLEVEL! neq 0 goto :self_dl_ps
-echo [%DATE% %TIME%] [3/7] Metoda: curl.exe >> "%LOG_FILE%"
-echo        Metoda: curl.exe
-curl.exe -L --progress-bar --connect-timeout 30 -o "%SELF_ZIP%" "%SELF_URL%"
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [3/7] curl ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :self_dl_done
-del "%SELF_ZIP%" >nul 2>&1
-
-:self_dl_ps
-:: Metoda 2: PowerShell
-echo [%DATE% %TIME%] [3/7] Metoda: PowerShell >> "%LOG_FILE%"
-echo        Metoda: PowerShell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%SELF_URL%' -OutFile '%SELF_ZIP%' -UseBasicParsing } catch { exit 1 }"
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [3/7] PowerShell ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :self_dl_done
-del "%SELF_ZIP%" >nul 2>&1
-
-:: Metoda 3: certutil
-echo [%DATE% %TIME%] [3/7] Metoda: certutil >> "%LOG_FILE%"
-echo        Metoda: certutil
-certutil -urlcache -split -f "%SELF_URL%" "%SELF_ZIP%" >> "%LOG_FILE%" 2>&1
-set "DL_ERR=!ERRORLEVEL!"
-echo [%DATE% %TIME%] [3/7] certutil ERRORLEVEL=!DL_ERR! >> "%LOG_FILE%"
-if !DL_ERR! equ 0 goto :self_dl_done
-
-echo [%DATE% %TIME%] [3/7] BLAD: Pobieranie generatora PDF >> "%LOG_FILE%"
-echo  [UWAGA] Nie udalo sie pobrac generatora PDF. Kod: !DL_ERR!
-echo          Generowanie PDF nie bedzie mozliwe.
-echo          Pobieranie faktur XML bedzie dzialac normalnie.
-set "PDF_AVAILABLE=0"
-goto :skip_pdf_download
-
+call :download_file "%SELF_URL%" "%SELF_ZIP%" "3/7"
+if "!DL_RESULT!"=="1" (
+    echo [%DATE% %TIME%] [3/7] BLAD: Pobieranie generatora PDF >> "%LOG_FILE%"
+    echo  !C_Q![UWAGA]!C_0! Nie udalo sie pobrac generatora PDF.
+    echo          Generowanie PDF nie bedzie mozliwe.
+    echo          Pobieranie faktur XML bedzie dzialac normalnie.
+    set "PDF_AVAILABLE=0"
+    goto :skip_pdf_download
+)
 :self_dl_done
 :: Sprawdz rozmiar
 for %%F in ("%SELF_ZIP%") do set "SELFZIP_SIZE=%%~zF"
 echo [%DATE% %TIME%] [3/7] Rozmiar: !SELFZIP_SIZE! bajtow >> "%LOG_FILE%"
 if "!SELFZIP_SIZE!"=="" (
-    echo  [UWAGA] Pobrany plik generatora PDF jest pusty.
+    echo  !C_Q![UWAGA]!C_0! Pobrany plik generatora PDF jest pusty.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 if !SELFZIP_SIZE! GEQ 1000 goto :self_size_ok
-echo  [UWAGA] Pobrany plik generatora PDF jest za maly - !SELFZIP_SIZE! bajtow.
+echo  !C_Q![UWAGA]!C_0! Pobrany plik generatora PDF jest za maly - !SELFZIP_SIZE! bajtow.
 set "PDF_AVAILABLE=0"
 goto :skip_pdf_download
 :self_size_ok
+echo [%DATE% %TIME%] [3/7] SHA-256: >> "%LOG_FILE%"
+certutil -hashfile "%SELF_ZIP%" SHA256 >> "%LOG_FILE%" 2>&1
 
 :: Rozpakuj
 echo        Rozpakowywanie...
 set "SELF_EXTRACT=%TEMP_DIR%\self-repo"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%SELF_ZIP%' -DestinationPath '%SELF_EXTRACT%' -Force"
 if !ERRORLEVEL! neq 0 (
-    echo  [UWAGA] Nie udalo sie rozpakowac generatora PDF.
+    echo  !C_Q![UWAGA]!C_0! Nie udalo sie rozpakowac generatora PDF.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
@@ -398,7 +334,7 @@ if !ERRORLEVEL! neq 0 (
 set "SELF_INNER="
 for /d %%D in ("%SELF_EXTRACT%\*") do set "SELF_INNER=%%D"
 if "!SELF_INNER!"=="" (
-    echo  [UWAGA] Nie znaleziono katalogu wewnatrz archiwum.
+    echo  !C_Q![UWAGA]!C_0! Nie znaleziono katalogu wewnatrz archiwum.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
@@ -408,7 +344,7 @@ mkdir "%INSTALL_DIR%" >nul 2>&1
 if exist "!SELF_INNER!\ksef_pdf.py" (
     copy /Y "!SELF_INNER!\ksef_pdf.py" "%INSTALL_DIR%\" >nul 2>&1
 ) else (
-    echo  [UWAGA] Brak ksef_pdf.py w pobranym repozytorium.
+    echo  !C_Q![UWAGA]!C_0! Brak ksef_pdf.py w pobranym repozytorium.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
@@ -416,7 +352,7 @@ if exist "!SELF_INNER!\ksef_client.py" (
     copy /Y "!SELF_INNER!\ksef_client.py" "%INSTALL_DIR%\" >nul 2>&1
     echo        ksef_client.py skopiowany.
 ) else (
-    echo  [UWAGA] Brak ksef_client.py w pobranym repozytorium.
+    echo  !C_Q![UWAGA]!C_0! Brak ksef_client.py w pobranym repozytorium.
 )
 
 mkdir "%INSTALL_DIR%\fonts" >nul 2>&1
@@ -424,19 +360,19 @@ if exist "!SELF_INNER!\fonts\Lato-Regular.ttf" (
     copy /Y "!SELF_INNER!\fonts\Lato-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
     copy /Y "!SELF_INNER!\fonts\Lato-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
 ) else (
-    echo  [UWAGA] Brak fontow w pobranym repozytorium.
+    echo  !C_Q![UWAGA]!C_0! Brak fontow w pobranym repozytorium.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 
 :: Weryfikacja
 if not exist "%INSTALL_DIR%\ksef_pdf.py" (
-    echo  [UWAGA] ksef_pdf.py nie znaleziono po kopiowaniu.
+    echo  !C_Q![UWAGA]!C_0! ksef_pdf.py nie znaleziono po kopiowaniu.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
 if not exist "%INSTALL_DIR%\fonts\Lato-Regular.ttf" (
-    echo  [UWAGA] Fonty nie znalezione po kopiowaniu.
+    echo  !C_Q![UWAGA]!C_0! Fonty nie znalezione po kopiowaniu.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
@@ -451,7 +387,7 @@ echo        Generator PDF (ksef_pdf.py + fonts) zainstalowany pomyslnie.
 :: ============================================================================
 echo [%DATE% %TIME%] [4/7] START >> "%LOG_FILE%"
 echo.
-echo  [4/7] Pobieranie repozytoriow z GitHub...
+echo  !C_I![4/7]!C_0! Pobieranie repozytoriow z GitHub...
 
 :: --- ksef-cli ---
 echo.
@@ -475,7 +411,7 @@ if !ERRORLEVEL! neq 0 (
         echo        Proba: certutil...
         certutil -urlcache -split -f "!CLI_URL!" "%CLI_ZIP%" >> "%LOG_FILE%" 2>&1
         if !ERRORLEVEL! neq 0 (
-            echo  [BLAD] Nie udalo sie pobrac ksef-cli z GitHub.
+            echo  !C_E![BLAD]!C_0! Nie udalo sie pobrac ksef-cli z GitHub.
             echo         Sprawdz: https://github.com/%GITHUB_REPO_CLI%
             goto :error_exit
         )
@@ -485,20 +421,22 @@ if !ERRORLEVEL! neq 0 (
 :: Sprawdz rozmiar
 for %%F in ("%CLI_ZIP%") do set "CLIZIP_SIZE=%%~zF"
 if "!CLIZIP_SIZE!"=="" (
-    echo  [BLAD] Pobrany plik ksef-cli jest pusty.
+    echo  !C_E![BLAD]!C_0! Pobrany plik ksef-cli jest pusty.
     goto :error_exit
 )
 if !CLIZIP_SIZE! GEQ 1000 goto :cli_size_ok
-echo  [BLAD] Pobrany plik ksef-cli jest za maly - !CLIZIP_SIZE! bajtow.
+echo  !C_E![BLAD]!C_0! Pobrany plik ksef-cli jest za maly - !CLIZIP_SIZE! bajtow.
 goto :error_exit
 :cli_size_ok
+echo [%DATE% %TIME%] [4/7] SHA-256: >> "%LOG_FILE%"
+certutil -hashfile "%CLI_ZIP%" SHA256 >> "%LOG_FILE%" 2>&1
 
 :: Rozpakuj
 echo        Rozpakowywanie ksef-cli...
 set "CLI_EXTRACT=%TEMP_DIR%\cli-repo"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Expand-Archive -Path '%CLI_ZIP%' -DestinationPath '%CLI_EXTRACT%' -Force"
 if !ERRORLEVEL! neq 0 (
-    echo  [BLAD] Nie udalo sie rozpakowac ksef-cli.
+    echo  !C_E![BLAD]!C_0! Nie udalo sie rozpakowac ksef-cli.
     goto :error_exit
 )
 
@@ -506,7 +444,7 @@ if !ERRORLEVEL! neq 0 (
 set "CLI_INNER="
 for /d %%D in ("%CLI_EXTRACT%\*") do set "CLI_INNER=%%D"
 if "!CLI_INNER!"=="" (
-    echo  [BLAD] Nie znaleziono katalogu wewnatrz archiwum ksef-cli.
+    echo  !C_E![BLAD]!C_0! Nie znaleziono katalogu wewnatrz archiwum ksef-cli.
     goto :error_exit
 )
 
@@ -531,7 +469,7 @@ if exist "!CLI_INNER!\ksef\fetch_invoices.py" (
     )
     set "REPO_STRUCTURE=flat"
 ) else (
-    echo  [BLAD] Nie znaleziono plikow ksef-cli w pobranym repozytorium.
+    echo  !C_E![BLAD]!C_0! Nie znaleziono plikow ksef-cli w pobranym repozytorium.
     echo         Oczekiwano: fetch_invoices.py lub ksef/fetch_invoices.py
     dir /b "!CLI_INNER!"
     goto :error_exit
@@ -550,7 +488,7 @@ if "!REPO_STRUCTURE!"=="package" (
 )
 
 if "!VALID!"=="0" (
-    echo  [BLAD] Brakuje wymaganych plikow ksef-cli po rozpakowaniu.
+    echo  !C_E![BLAD]!C_0! Brakuje wymaganych plikow ksef-cli po rozpakowaniu.
     goto :error_exit
 )
 
@@ -573,7 +511,7 @@ if "!PATCH_FILE!" neq "" (
 :: ============================================================================
 echo [%DATE% %TIME%] [5/7] START >> "%LOG_FILE%"
 echo.
-echo  [5/7] Instalacja zaleznosci...
+echo  !C_I![5/7]!C_0! Instalacja zaleznosci...
 
 :: --- Python: pip install ---
 echo.
@@ -592,7 +530,7 @@ if not exist "%CLI_DIR%\requirements.txt" (
 set "PIP_INST_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [5/7] pip install ksef-cli ERRORLEVEL=!PIP_INST_ERR! >> "%LOG_FILE%"
 if !PIP_INST_ERR! neq 0 (
-    echo  [BLAD] Instalacja zaleznosci Python nie powiodla sie.
+    echo  !C_E![BLAD]!C_0! Instalacja zaleznosci Python nie powiodla sie.
     echo         Sprawdz polaczenie z internetem.
     goto :error_exit
 )
@@ -613,7 +551,7 @@ echo        --- Zaleznosci generatora PDF (pip install) ---
 set "PDF_PIP_ERR=!ERRORLEVEL!"
 echo [%DATE% %TIME%] [5/7] pip install reportlab+qrcode+defusedxml ERRORLEVEL=!PDF_PIP_ERR! >> "%LOG_FILE%"
 if !PDF_PIP_ERR! neq 0 (
-    echo  [UWAGA] Instalacja reportlab/qrcode/defusedxml nie powiodla sie.
+    echo  !C_Q![UWAGA]!C_0! Instalacja reportlab/qrcode/defusedxml nie powiodla sie.
     echo          Generowanie PDF moze nie dzialac.
     set "PDF_AVAILABLE=0"
 ) else (
@@ -627,7 +565,7 @@ if !PDF_PIP_ERR! neq 0 (
 :: ============================================================================
 echo [%DATE% %TIME%] [6/7] START >> "%LOG_FILE%"
 echo.
-echo  [6/7] Konfiguracja KSeF
+echo  !C_I![6/7]!C_0! Konfiguracja KSeF
 echo.
 echo  ============================================================
 echo   Wybierz metode uwierzytelniania w KSeF:
@@ -647,7 +585,7 @@ set "AUTH_METHOD="
 set /p "AUTH_METHOD=  Wybierz metode [1/2]: "
 if "!AUTH_METHOD!"=="1" goto :auth_token
 if "!AUTH_METHOD!"=="2" goto :auth_cert
-echo  [!] Wybierz 1 lub 2.
+echo  !C_Q![?]!C_0! Wybierz 1 lub 2.
 goto :ask_auth_method
 
 :: ---- Sciezka Token ----
@@ -661,7 +599,7 @@ echo.
 set "KSEF_TOKEN="
 set /p "KSEF_TOKEN=  Token KSeF: "
 if "!KSEF_TOKEN!"=="" (
-    echo  [!] Token jest wymagany. Sprobuj ponownie.
+    echo  !C_Q![?]!C_0! Token jest wymagany. Sprobuj ponownie.
     goto :ask_token
 )
 :: Walidacja dlugosci tokenu (min 20 znakow)
@@ -674,7 +612,7 @@ if defined TOK_TMP (
     goto :tok_len_loop
 )
 if !TOK_LEN! GEQ 20 goto :token_len_ok
-echo  [!] Token KSeF wydaje sie za krotki - !TOK_LEN! znakow, oczekiwano min. 20.
+echo  !C_Q![?]!C_0! Token KSeF wydaje sie za krotki - !TOK_LEN! znakow, oczekiwano min. 20.
 echo      Upewnij sie, ze wklejasz pelny token z podatki.gov.pl
 set /p "TOK_CONFIRM=  Kontynuowac mimo to? [T/N]: "
 if /i "!TOK_CONFIRM!" neq "T" goto :ask_token
@@ -719,7 +657,7 @@ if not exist "!INSTALL_DIR!\!CONTEXT_NIP!\certs" mkdir "!INSTALL_DIR!\!CONTEXT_N
 if exist "!INSTALL_DIR!\!CONTEXT_NIP!\certs" (
     echo [%DATE% %TIME%] Folder certs utworzony OK >> "%LOG_FILE%"
 ) else (
-    echo  [!] Nie udalo sie utworzyc folderu: !INSTALL_DIR!\!CONTEXT_NIP!\certs
+    echo  !C_Q![?]!C_0! Nie udalo sie utworzyc folderu: !INSTALL_DIR!\!CONTEXT_NIP!\certs
     echo [%DATE% %TIME%] BLAD: mkdir certs nie powiodl sie >> "%LOG_FILE%"
 )
 
@@ -733,7 +671,7 @@ echo.
 set "CERT_EXISTS=0"
 if exist "!CERT_TARGET_DIR!\auth_cert.crt" if exist "!CERT_TARGET_DIR!\auth_key.key" set "CERT_EXISTS=1"
 if "!CERT_EXISTS!"=="1" (
-    echo  [INFO] Certyfikat juz istnieje w folderze podatnika:
+    echo  !C_I![INFO]!C_0! Certyfikat juz istnieje w folderze podatnika:
     echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_cert.crt
     echo         %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs\auth_key.key
     echo.
@@ -770,7 +708,7 @@ set "CERT_SRC="
 set /p "CERT_SRC=  Sciezka do certyfikatu (.crt) [!DEFAULT_CERT!]: "
 if "!CERT_SRC!"=="" set "CERT_SRC=!DEFAULT_CERT!"
 if not exist "!CERT_SRC!" (
-    echo  [!] Plik nie znaleziony: !CERT_SRC!
+    echo  !C_Q![?]!C_0! Plik nie znaleziony: !CERT_SRC!
     goto :ask_cert_path
 )
 echo        Certyfikat: !CERT_SRC!
@@ -781,7 +719,7 @@ set "KEY_SRC="
 set /p "KEY_SRC=  Sciezka do klucza prywatnego (.key) [!DEFAULT_KEY!]: "
 if "!KEY_SRC!"=="" set "KEY_SRC=!DEFAULT_KEY!"
 if not exist "!KEY_SRC!" (
-    echo  [!] Plik nie znaleziony: !KEY_SRC!
+    echo  !C_Q![?]!C_0! Plik nie znaleziony: !KEY_SRC!
     goto :ask_key_path
 )
 echo        Klucz prywatny: !KEY_SRC!
@@ -802,7 +740,7 @@ if not exist "!CERT_SRC!" (
     echo  ===========================================================
     pause >nul
     if not exist "!CERT_SRC!" (
-        echo  [!] Nadal brak pliku certyfikatu. Podaj sciezke recznie.
+        echo  !C_Q![?]!C_0! Nadal brak pliku certyfikatu. Podaj sciezke recznie.
         goto :ask_cert_path
     )
 )
@@ -819,7 +757,7 @@ if not exist "!KEY_SRC!" (
     echo  ===========================================================
     pause >nul
     if not exist "!KEY_SRC!" (
-        echo  [!] Nadal brak pliku klucza. Podaj sciezke recznie.
+        echo  !C_Q![?]!C_0! Nadal brak pliku klucza. Podaj sciezke recznie.
         goto :ask_key_path
     )
 )
@@ -850,27 +788,27 @@ if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
     echo.
     pause >nul
     if not exist "!CERT_TARGET_DIR!\auth_cert.crt" (
-        echo  [!] Nie znaleziono auth_cert.crt w folderze:
+        echo  !C_Q![?]!C_0! Nie znaleziono auth_cert.crt w folderze:
         echo      %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
-        echo  [!] Sprobuj ponownie.
+        echo  !C_Q![?]!C_0! Sprobuj ponownie.
         goto :ask_key_password
     )
     if not exist "!CERT_TARGET_DIR!\auth_key.key" (
-        echo  [!] Nie znaleziono auth_key.key w folderze:
+        echo  !C_Q![?]!C_0! Nie znaleziono auth_key.key w folderze:
         echo      %%LOCALAPPDATA%%\KSeFCLI\!CONTEXT_NIP!\certs
-        echo  [!] Sprobuj ponownie.
+        echo  !C_Q![?]!C_0! Sprobuj ponownie.
         goto :ask_key_password
     )
-    echo  [OK] Pliki certyfikatu znalezione.
+    echo  !C_P![OK]!C_0! Pliki certyfikatu znalezione.
 )
 
 :ask_key_password_input
 set "KEY_PASSWORD="
 set "KEY_PASSWORD_ENC="
-set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%.tmp"
+set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%%RANDOM%%RANDOM%.tmp"
 
 echo.
-echo  Haslo klucza prywatnego (Enter = brak hasla):
+echo  !C_PW!Haslo klucza prywatnego!C_0! (Enter = brak hasla):
 echo  (haslo zostanie zaszyfrowane AES-256 i zapisane lokalnie)
 
 :: Maskowanie hasla gwiazdkami — PowerShell EncodedCommand (bez nawiasow w batch)
@@ -904,17 +842,17 @@ echo [%DATE% %TIME%] AES_KEYFILE=!AES_KEYFILE! >> "%LOG_FILE%"
 
 :: Sprawdz czy pliki istnieja
 if not exist "%PYTHON_DIR%\python.exe" (
-    echo  [BLAD] Nie znaleziono Python: %PYTHON_DIR%\python.exe
+    echo  !C_E![BLAD]!C_0! Nie znaleziono Python: %PYTHON_DIR%\python.exe
     echo [%DATE% %TIME%] BLAD: brak python.exe >> "%LOG_FILE%"
     goto :error_exit
 )
 if not exist "%INSTALL_DIR%\ksef_client.py" (
-    echo  [BLAD] Nie znaleziono ksef_client.py: %INSTALL_DIR%\ksef_client.py
+    echo  !C_E![BLAD]!C_0! Nie znaleziono ksef_client.py: %INSTALL_DIR%\ksef_client.py
     echo [%DATE% %TIME%] BLAD: brak ksef_client.py >> "%LOG_FILE%"
     goto :error_exit
 )
 if not exist "!PW_TMPFILE!" (
-    echo  [BLAD] Nie znaleziono pliku tymczasowego z haslem.
+    echo  !C_E![BLAD]!C_0! Nie znaleziono pliku tymczasowego z haslem.
     echo [%DATE% %TIME%] BLAD: brak PW_TMPFILE !PW_TMPFILE! >> "%LOG_FILE%"
     goto :error_exit
 )
@@ -937,7 +875,7 @@ if exist "!PW_OUT!" (
 )
 
 if "!KEY_PASSWORD_ENC!"=="" (
-    echo  [BLAD] Szyfrowanie hasla nie powiodlo sie.
+    echo  !C_E![BLAD]!C_0! Szyfrowanie hasla nie powiodlo sie.
     echo [%DATE% %TIME%] BLAD: KEY_PASSWORD_ENC puste >> "%LOG_FILE%"
     if exist "!PW_ERR!" (
         echo         --- Blad Pythona: ---
@@ -967,7 +905,7 @@ set "CONTEXT_NIP="
 :nip_manual_cert
 set /p "CONTEXT_NIP=  NIP firmy [10 cyfr, bez myslnikow]: "
 if "!CONTEXT_NIP!"=="" (
-    echo  [!] NIP jest wymagany. Sprobuj ponownie.
+    echo  !C_Q![?]!C_0! NIP jest wymagany. Sprobuj ponownie.
     goto :nip_manual_cert
 )
 goto :nip_len_check_cert
@@ -982,7 +920,7 @@ if defined NIP_TMP (
     goto :nip_len_loop_cert
 )
 if !NIP_LEN! equ 10 goto :nip_len_ok_cert
-echo  [!] NIP powinien miec 10 cyfr. Wprowadzono !NIP_LEN! znakow.
+echo  !C_Q![?]!C_0! NIP powinien miec 10 cyfr. Wprowadzono !NIP_LEN! znakow.
 set /p "NIP_CONFIRM=  Kontynuowac mimo to? [T/N]: "
 if /i "!NIP_CONFIRM!" neq "T" goto :nip_manual_cert
 :nip_len_ok_cert
@@ -1002,7 +940,7 @@ goto :nip_len_check
 :nip_manual
 set /p "CONTEXT_NIP=  NIP firmy [10 cyfr, bez myslnikow]: "
 if "!CONTEXT_NIP!"=="" (
-    echo  [!] NIP jest wymagany. Sprobuj ponownie.
+    echo  !C_Q![?]!C_0! NIP jest wymagany. Sprobuj ponownie.
     set "TOKEN_NIP="
     goto :ask_nip
 )
@@ -1018,7 +956,7 @@ if defined NIP_TMP (
     goto :nip_len_loop
 )
 if !NIP_LEN! equ 10 goto :nip_len_ok
-echo  [!] NIP powinien miec 10 cyfr. Wprowadzono !NIP_LEN! znakow.
+echo  !C_Q![?]!C_0! NIP powinien miec 10 cyfr. Wprowadzono !NIP_LEN! znakow.
 set /p "NIP_CONFIRM=  Kontynuowac mimo to? [T/N]: "
 if /i "!NIP_CONFIRM!" neq "T" (
     set "TOKEN_NIP="
@@ -1066,7 +1004,7 @@ set "XML_DIR_EXISTED=0"
 if exist "!XML_DIR!" set "XML_DIR_EXISTED=1"
 mkdir "!XML_DIR!" >nul 2>&1
 if not exist "!XML_DIR!" (
-    echo  [BLAD] Nie udalo sie utworzyc folderu: !XML_DIR!
+    echo  !C_E![BLAD]!C_0! Nie udalo sie utworzyc folderu: !XML_DIR!
     echo  Sprawdz czy sciezka jest poprawna i masz uprawnienia.
     goto :error_exit
 )
@@ -1086,11 +1024,11 @@ if "!AUTH_METHOD!"=="certificate" if "!CERT_SRC_SAVED!" neq "" (
     copy /Y "!CERT_SRC_SAVED!" "!CERTS_DIR!\auth_cert.crt" >nul 2>&1
     copy /Y "!KEY_SRC_SAVED!" "!CERTS_DIR!\auth_key.key" >nul 2>&1
     if not exist "!CERTS_DIR!\auth_cert.crt" (
-        echo  [BLAD] Nie udalo sie skopiowac certyfikatu.
+        echo  !C_E![BLAD]!C_0! Nie udalo sie skopiowac certyfikatu.
         goto :error_exit
     )
     if not exist "!CERTS_DIR!\auth_key.key" (
-        echo  [BLAD] Nie udalo sie skopiowac klucza prywatnego.
+        echo  !C_E![BLAD]!C_0! Nie udalo sie skopiowac klucza prywatnego.
         goto :error_exit
     )
     echo        Certyfikat: !CERTS_DIR!\auth_cert.crt
@@ -1103,12 +1041,41 @@ if "!AUTH_METHOD!"=="certificate" if "!CERT_SRC_SAVED!" neq "" (
 :: ============================================================================
 echo [%DATE% %TIME%] [7/7] START >> "%LOG_FILE%"
 echo.
-echo  [7/7] Generowanie plikow...
+echo  !C_I![7/7]!C_0! Generowanie plikow...
+
+:: --- Szyfrowanie tokenu AES-256 ---
+set "TOKEN_ENC="
+if "!AUTH_METHOD!"=="token" (
+    set "CERTS_DIR=!NIP_DIR!\certs"
+    mkdir "!CERTS_DIR!" >nul 2>&1
+    set "AES_KEYFILE=!CERTS_DIR!\.aes_key"
+    set "TOK_TMPFILE=%TEMP%\ksef_tok_%RANDOM%%RANDOM%.tmp"
+    echo !KSEF_TOKEN!> "!TOK_TMPFILE!"
+    set "TOK_OUT=%TEMP%\ksef_tok_out_%RANDOM%%RANDOM%.tmp"
+    if exist "!AES_KEYFILE!" (
+        set "KEYFILE_ARG=--password-keyfile"
+    ) else (
+        set "KEYFILE_ARG=--generate-keyfile"
+    )
+    "%PYTHON_DIR%\python.exe" "%INSTALL_DIR%\ksef_client.py" --nip !CONTEXT_NIP! --encrypt-password-file "!TOK_TMPFILE!" !KEYFILE_ARG! "!AES_KEYFILE!" > "!TOK_OUT!" 2>nul
+    set "TOK_ENC_ERR=!ERRORLEVEL!"
+    del /f /q "!TOK_TMPFILE!" >nul 2>&1
+    if !TOK_ENC_ERR! equ 0 (
+        set /p TOKEN_ENC=<"!TOK_OUT!"
+        del /f /q "!TOK_OUT!" >nul 2>&1
+    ) else (
+        del /f /q "!TOK_OUT!" >nul 2>&1
+        echo  !C_E![BLAD]!C_0! Szyfrowanie tokenu nie powiodlo sie.
+        goto :error_exit
+    )
+    echo        Token zaszyfrowany pomyslnie.
+    echo [%DATE% %TIME%] Token zaszyfrowany AES-256 >> "%LOG_FILE%"
+)
 
 :: --- Plik .env ---
 echo AUTH_METHOD=!AUTH_METHOD!> "!NIP_DIR!\.env"
 echo CONTEXT_NIP=!CONTEXT_NIP!>> "!NIP_DIR!\.env"
-if "!AUTH_METHOD!"=="token" echo KSEF_TOKEN=!KSEF_TOKEN!>> "!NIP_DIR!\.env"
+if "!AUTH_METHOD!"=="token" echo KSEF_TOKEN_ENC=!TOKEN_ENC!>> "!NIP_DIR!\.env"
 if "!AUTH_METHOD!"=="certificate" if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!>> "!NIP_DIR!\.env"
 if defined CUSTOM_FAKTURY_DIR echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!>> "!NIP_DIR!\.env"
 echo        .env utworzony
@@ -1149,17 +1116,17 @@ if "%PDF_AVAILABLE%"=="1" (
         echo [%DATE% %TIME%] [7/7] ksef_pdf.py OK: %INSTALL_DIR%\ksef_pdf.py >> "%LOG_FILE%"
     ) else (
         echo [%DATE% %TIME%] [7/7] BRAK ksef_pdf.py! >> "%LOG_FILE%"
-        echo  [UWAGA] ksef_pdf.py nie znaleziony w %INSTALL_DIR%!
+        echo  !C_Q![UWAGA]!C_0! ksef_pdf.py nie znaleziony w %INSTALL_DIR%
     )
     if exist "%INSTALL_DIR%\fonts\Lato-Regular.ttf" (
         echo [%DATE% %TIME%] [7/7] fonts OK >> "%LOG_FILE%"
     ) else (
         echo [%DATE% %TIME%] [7/7] BRAK fontow! >> "%LOG_FILE%"
-        echo  [UWAGA] Fonty nie znalezione w %INSTALL_DIR%\fonts!
+        echo  !C_Q![UWAGA]!C_0! Fonty nie znalezione w %INSTALL_DIR%\fonts
     )
 ) else (
     echo [%DATE% %TIME%] [7/7] Generator PDF niedostepny >> "%LOG_FILE%"
-    echo  [UWAGA] Generator PDF niedostepny - PDF_AVAILABLE=0
+    echo  !C_Q![UWAGA]!C_0! Generator PDF niedostepny - PDF_AVAILABLE=0
 )
 
 :: --- Launcher: pobierz-faktury.bat ---
@@ -1172,11 +1139,28 @@ setlocal DisableDelayedExpansion
     echo chcp 65001 ^>nul 2^>^&1
     echo setlocal EnableDelayedExpansion
     echo.
+    echo :: Kolory ANSI
+    echo for /f %%%%e in ('"prompt $E ^& for %%%%b in (1) do rem"') do set "ESC=%%%%e"
+    echo set "C_I=!ESC![96m"
+    echo set "C_P=!ESC![92m"
+    echo set "C_Q=!ESC![93m"
+    echo set "C_E=!ESC![91m"
+    echo set "C_0=!ESC![0m"
+    echo.
     echo :: --- Tryb pracy: --auto (harmonogram) lub interaktywny ---
     echo set "AUTO_MODE=0"
     echo if "%%~1"=="--auto" set "AUTO_MODE=1"
     echo.
     echo if "%%AUTO_MODE%%"=="0" title Pobieranie faktur z KSeF + generowanie PDF
+    echo.
+    echo :: --- Lockfile: zapobieganie rownoleglym uruchomieniom ---
+    echo set "LOCKFILE=%%NIPDIR%%\pobierz-faktury.lock"
+    echo if exist "%%LOCKFILE%%" ^(
+    echo     echo [%%DATE%% %%TIME%%] Inny proces juz pobiera faktury. Przerywam. ^>^> "%%LOG%%"
+    echo     if "%%AUTO_MODE%%"=="0" echo  !C_Q![UWAGA]!C_0! Inny proces juz pobiera faktury. Przerywam.
+    echo     exit /b 0
+    echo ^)
+    echo echo %%DATE%% %%TIME%% ^> "%%LOCKFILE%%"
     echo.
     echo :: --- Sciezki ---
     echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
@@ -1202,10 +1186,10 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
     echo echo [%%DATE%% %%TIME%%] XML_DIR=%%XML_DIR%% ^>^> "%%LOG%%"
     echo.
-    echo :: --- Tryb automatyczny: 30 dni, bez menu ---
+    echo :: --- Tryb automatyczny: 7 dni, bez menu ---
     echo if "%%AUTO_MODE%%"=="1" ^(
-    echo     set "DAYS=30"
-    echo     echo [%%DATE%% %%TIME%%] Tryb automatyczny: 30 dni wstecz ^>^> "%%LOG%%"
+    echo     set "DAYS=7"
+    echo     echo [%%DATE%% %%TIME%%] Tryb automatyczny: 7 dni wstecz ^>^> "%%LOG%%"
     echo     goto :run_fetch
     echo ^)
     echo.
@@ -1219,7 +1203,7 @@ setlocal DisableDelayedExpansion
     echo echo.
     echo echo  Wybierz okres pobierania:
     echo echo.
-    echo echo    [1] Ostatnie 30 dni  (domyslnie - auto za 10s^)
+    echo echo    [1] Ostatnie 7 dni  (domyslnie - auto za 10s^)
     echo echo    [2] Biezacy miesiac
     echo echo    [3] Poprzedni miesiac
     echo echo    [4] Biezacy kwartal
@@ -1230,8 +1214,8 @@ setlocal DisableDelayedExpansion
     echo set "PERIOD_CHOICE=%%ERRORLEVEL%%"
     echo.
     echo :: Oblicz --days na podstawie wyboru
-    echo set "DAYS=30"
-    echo if "%%PERIOD_CHOICE%%"=="1" set "DAYS=30"
+    echo set "DAYS=7"
+    echo if "%%PERIOD_CHOICE%%"=="1" set "DAYS=7"
     echo if "%%PERIOD_CHOICE%%"=="2" (
     echo     :: Biezacy miesiac: dni od 1-go do dzis
     echo     for /f "tokens=1-3 delims=/" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
@@ -1265,9 +1249,7 @@ setlocal DisableDelayedExpansion
     echo.
     echo if "%%AUTH_METHOD%%"=="token" ^(
     echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
-    echo     set "FETCH_ARGS=!FETCH_ARGS! --token-file %%NIPDIR%%\.token"
-    echo     :: Wyodrebnij token do osobnego pliku (bezpieczniej niz arg CLI^)
-    echo     for /f "tokens=2 delims==" %%%%T in ^('findstr KSEF_TOKEN "%%NIPDIR%%\.env"'^) do echo %%%%T^> "%%NIPDIR%%\.token"
+    echo     set "FETCH_ARGS=!FETCH_ARGS! --token-enc %%KSEF_TOKEN_ENC%% --token-keyfile %%NIPDIR%%\certs\.aes_key"
     echo ^)
     echo.
     echo if "%%AUTH_METHOD%%"=="certificate" ^(
@@ -1287,17 +1269,17 @@ setlocal DisableDelayedExpansion
     echo set "FETCH_ERR=!ERRORLEVEL!"
     echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
     echo.
-    echo :: Usun tymczasowy plik tokenu
-    echo if exist "%%NIPDIR%%\.token" del "%%NIPDIR%%\.token" ^>nul 2^>^&1
+    echo :: (token przekazywany zaszyfrowany — brak pliku tymczasowego)
     echo.
     echo if !FETCH_ERR! neq 0 ^(
     echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
     echo     if "%%AUTO_MODE%%"=="0" ^(
     echo         echo.
-    echo         echo  [BLAD] Pobieranie faktur nie powiodlo sie.
+    echo         echo  !C_E![BLAD]!C_0! Pobieranie faktur nie powiodlo sie.
     echo         echo         Szczegoly w logu: %%LOG%%
     echo         echo.
     echo     ^)
+    echo     del "%%LOCKFILE%%" ^>nul 2^>^&1
     echo     exit /b 1
     echo ^)
     echo.
@@ -1305,7 +1287,7 @@ setlocal DisableDelayedExpansion
     echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
     echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
     echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
-    echo     if "%%AUTO_MODE%%"=="0" echo  [INFO] Brak ksef_pdf.py - generowanie PDF pominiete.
+    echo     if "%%AUTO_MODE%%"=="0" echo  !C_I![INFO]!C_0! Brak ksef_pdf.py - generowanie PDF pominiete.
     echo     goto :skip_pdf
     echo ^)
     echo.
@@ -1347,6 +1329,7 @@ setlocal DisableDelayedExpansion
     echo ^)
     echo.
     echo :skip_pdf
+    echo del "%%LOCKFILE%%" ^>nul 2^>^&1
     echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
     echo if "%%AUTO_MODE%%"=="0" ^(
     echo     echo.
@@ -1384,7 +1367,7 @@ if "!SCHED_CHOICE!"=="2" (
         echo        Faktury beda pobierane automatycznie co 60 minut.
         echo [%DATE% %TIME%] Harmonogram zadan: !TASK_NAME! co 60 min >> "%LOG_FILE%"
     ) else (
-        echo  [UWAGA] Nie udalo sie utworzyc zadania w Harmonogramie.
+        echo  !C_Q![UWAGA]!C_0! Nie udalo sie utworzyc zadania w Harmonogramie.
         echo          Mozesz dodac recznie: Harmonogram zadan ^> Nowe zadanie
         echo          Program: "!NIP_DIR!\pobierz-faktury.bat" --auto
         echo          Wyzwalacz: co 60 minut
@@ -1402,7 +1385,7 @@ rmdir /S /Q "%TEMP_DIR%" >nul 2>&1
 :: ============================================================================
 echo.
 echo  ============================================================
-echo   Instalacja zakonczona pomyslnie!
+echo   !C_P!Instalacja zakonczona pomyslnie.!C_0!
 echo  ============================================================
 echo.
 echo   Katalog instalacji:  %INSTALL_DIR%
@@ -1415,7 +1398,7 @@ echo   Folder podatnika:    !NIP_DIR!
 echo   Faktury:             !XML_DIR!
 echo.
 if "%PDF_AVAILABLE%"=="1" goto :summary_pdf_ok
-echo   [INFO] Generowanie PDF niedostepne.
+echo   !C_I![INFO]!C_0!  Generowanie PDF niedostepne.
 echo          Faktury beda dostepne jako pliki XML.
 goto :summary_pdf_done
 :summary_pdf_ok
@@ -1477,7 +1460,7 @@ del "%PS_SHORTCUT%" >nul 2>&1
 if !SC_ERR! equ 0 (
     echo        Skrot "Faktury KSeF - !CONTEXT_NIP!" utworzony na Pulpicie.
 ) else (
-    echo  [UWAGA] Nie udalo sie utworzyc skrotu na Pulpicie.
+    echo  !C_Q![UWAGA]!C_0! Nie udalo sie utworzyc skrotu na Pulpicie.
 )
 
 echo [%DATE% %TIME%] Instalacja zakonczona pomyslnie >> "%LOG_FILE%"
@@ -1490,7 +1473,7 @@ goto :normal_exit
 echo [%DATE% %TIME%] INSTALACJA NIE POWIODLA SIE >> "%LOG_FILE%"
 echo.
 echo  ============================================================
-echo   INSTALACJA NIE POWIODLA SIE
+echo   !C_E!INSTALACJA NIE POWIODLA SIE!C_0!
 echo  ============================================================
 echo.
 echo   Sprawdz:
@@ -1500,6 +1483,9 @@ echo   - Dziennik bledow powyzej
 echo   - Log: %LOG_FILE%
 echo.
 if exist "%TEMP_DIR%" rmdir /S /Q "%TEMP_DIR%" >nul 2>&1
+:: Czyszczenie plikow tymczasowych z danymi wrażliwymi
+del /f /q "%TEMP%\ksef_pw_*.tmp" >nul 2>&1
+del /f /q "%TEMP%\ksef_tok_*.tmp" >nul 2>&1
 pause
 exit /b 1
 
@@ -1508,3 +1494,43 @@ echo.
 echo  Nacisnij dowolny klawisz aby zamknac to okno...
 pause >nul
 exit /b 0
+
+:: ============================================================================
+:: Subroutine: download_file
+:: Parametry: %~1=URL  %~2=plik_docelowy  %~3=etykieta_logu
+:: Ustawia DL_RESULT=0 (OK) lub DL_RESULT=1 (blad)
+:: ============================================================================
+:download_file
+set "DL_URL=%~1"
+set "DL_DEST=%~2"
+set "DL_LABEL=%~3"
+set "DL_RESULT=1"
+
+:: curl
+where curl.exe >nul 2>&1
+if !ERRORLEVEL! neq 0 goto :dl_try_ps
+echo [%DATE% %TIME%] [%DL_LABEL%] Metoda: curl.exe >> "%LOG_FILE%"
+echo        Metoda: curl.exe
+curl.exe -L --progress-bar --connect-timeout 30 -o "!DL_DEST!" "!DL_URL!"
+if !ERRORLEVEL! equ 0 (set "DL_RESULT=0" & goto :dl_done)
+echo [%DATE% %TIME%] [%DL_LABEL%] curl nie powiodl sie >> "%LOG_FILE%"
+del "!DL_DEST!" >nul 2>&1
+
+:dl_try_ps
+echo [%DATE% %TIME%] [%DL_LABEL%] Metoda: PowerShell >> "%LOG_FILE%"
+echo        Metoda: PowerShell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '!DL_URL!' -OutFile '!DL_DEST!' -UseBasicParsing } catch { exit 1 }"
+if !ERRORLEVEL! equ 0 (set "DL_RESULT=0" & goto :dl_done)
+echo [%DATE% %TIME%] [%DL_LABEL%] PowerShell nie powiodl sie >> "%LOG_FILE%"
+del "!DL_DEST!" >nul 2>&1
+
+:: certutil
+echo [%DATE% %TIME%] [%DL_LABEL%] Metoda: certutil >> "%LOG_FILE%"
+echo        Metoda: certutil
+certutil -urlcache -split -f "!DL_URL!" "!DL_DEST!" >> "%LOG_FILE%" 2>&1
+if !ERRORLEVEL! equ 0 (set "DL_RESULT=0" & goto :dl_done)
+
+echo [%DATE% %TIME%] [%DL_LABEL%] Wszystkie metody zawiodly >> "%LOG_FILE%"
+
+:dl_done
+goto :eof

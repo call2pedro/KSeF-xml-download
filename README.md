@@ -6,7 +6,7 @@ Obsluguje dwie metody uwierzytelniania: **token KSeF** lub **certyfikat XAdES**.
 
 Schemat faktury: **FA(2)** — [CRD 2023/06/29/12648](http://crd.gov.pl/wzor/2023/06/29/12648/)
 
-Wersja: **2.1**
+Wersja: **1.3.0**
 
 ## Szybki start
 
@@ -26,8 +26,10 @@ Wersja: **2.1**
 | 3/7 | Pobiera ksef_client.py, ksef_pdf.py i fonty z GitHub |
 | 4/7 | Pobiera ksef-cli z GitHub (legacy backup) |
 | 5/7 | Instaluje zaleznosci Python (requests, cryptography, lxml, reportlab, ...) |
-| 6/7 | Pyta o metode auth (Token/Certyfikat), NIP, tworzy folder podatnika |
-| 7/7 | Tworzy pliki konfiguracyjne i launcher |
+| 6/7 | Pyta o metode auth (Token/Certyfikat), NIP, folder docelowy faktur |
+| 7/7 | Tworzy pliki konfiguracyjne, launcher i opcjonalnie harmonogram zadan |
+
+Instalator wyswietla kolorowe komunikaty ANSI (Windows 10+) — statusy krokow, bledy, ostrzezenia.
 
 ## Pobieranie faktur
 
@@ -35,7 +37,7 @@ Launcher `pobierz-faktury.bat` oferuje menu wyboru okresu:
 
 | Opcja | Okres |
 |-------|-------|
-| 1 | Ostatnie 30 dni (domyslna, timeout 10s) |
+| 1 | Ostatnie 7 dni (domyslna, timeout 10s) |
 | 2 | Biezacy miesiac |
 | 3 | Poprzedni miesiac |
 | 4 | Biezacy kwartal |
@@ -44,6 +46,36 @@ Launcher `pobierz-faktury.bat` oferuje menu wyboru okresu:
 
 Po pobraniu XML automatycznie generuje wizualizacje PDF.
 
+### Segregacja faktur
+
+Faktury zapisywane w strukturze `{NIP}/{ROK}/{MIESIAC}/`:
+
+```
+{folder-docelowy}\
+└── 1234567890\
+    └── 2026\
+        └── 03\
+            ├── 1234567890-20260315-ABC123.xml
+            └── 1234567890-20260315-ABC123.pdf
+```
+
+Data wystawienia faktury (invoicingDate) okresla podfolder ROK/MIESIAC. Prefiks NIP zapobiega mieszaniu dokumentow przy wielu podatnikach.
+
+### Tryb automatyczny
+
+Launcher obsluguje parametr `--auto` dla bezobslugowego pobierania:
+- Okres: **7 dni** (bez menu, bez pause)
+- Logowanie do `pobierz-faktury.log`
+- Lockfile zapobiega rownoczesnemu uruchomieniu
+- Przeznaczony do Harmonogramu zadan Windows
+
+### Harmonogram zadan Windows
+
+Instalator oferuje opcjonalne dodanie zadania:
+- `schtasks /tn "KSeF-Faktury-{NIP}" /sc MINUTE /mo 60`
+- Wywoluje `pobierz-faktury.bat --auto`
+- Zadanie per-NIP, nie wymaga uprawnien administratora
+
 ## Uwierzytelnianie
 
 ### Token KSeF
@@ -51,13 +83,22 @@ Po pobraniu XML automatycznie generuje wizualizacje PDF.
 - Wygenerowany na [podatki.gov.pl/ksef](https://www.podatki.gov.pl/ksef/)
 - Logowanie profilem zaufanym lub e-dowodem
 - Token szyfrowany RSA-OAEP SHA-256 przy kazdym polaczeniu
+- Token przechowywany w `.env` zaszyfrowany AES-256-GCM (nie plaintext)
 
 ### Certyfikat XAdES
 
 - Certyfikat uwierzytelniajacy z aplikacji KSeF (Ministerstwo Finansow)
 - Wymaga dwoch plikow: certyfikat (`.crt`) + klucz prywatny (`.key`)
-- Opcjonalne haslo klucza prywatnego — szyfrowane AES-256-GCM (PowerShell EncodedCommand)
+- Opcjonalne haslo klucza prywatnego — szyfrowane AES-256-GCM
 - Podpis XAdES-BES (enveloped, SHA-256, RSA/ECDSA)
+
+### Bezpieczenstwo
+
+- **Walidacja NIP** — format 10 cyfr + suma kontrolna modulo 11
+- **Szyfrowanie tokenow i hasel** — AES-256-GCM z kluczem w `certs/.aes_key`
+- **Sanityzacja nazw plikow** — znaki specjalne, podwojne kropki, limit 200 znakow
+- **Lockfile** — zapobiega rownoczesnemu uruchomieniu launchera
+- **Bezpieczne parsowanie XML** — `defusedxml` (ochrona przed XXE)
 
 ## Wizualizacja PDF
 
@@ -107,15 +148,21 @@ Automatyczna konwersja faktur XML na czytelne pliki PDF (schemat FA(2), [CRD 202
     Lato-Regular.ttf            Font z pelna obsluga polskich znakow
     Lato-Bold.ttf
   <NIP>\                        Folder podatnika (np. 1234567890\)
-    .env                        Konfiguracja (metoda auth, NIP, ...)
-    certs\                      Certyfikaty (tylko auth certyfikatem)
+    .env                        Konfiguracja (metoda auth, NIP, token/cert, folder)
+    certs\                      Certyfikaty i klucze szyfrowania
       auth_cert.crt             Certyfikat uwierzytelniajacy
       auth_key.key              Klucz prywatny
-    faktury\                    Pobrane faktury XML + wygenerowane PDF
+      .aes_key                  Klucz AES-256 do szyfrowania tokena/hasla
     pobierz-faktury.bat         Launcher (podwojne klikniecie = pobierz + PDF)
+    pobierz-faktury.log         Log pobierania
 ```
 
-Kazdy NIP ma wlasny folder z konfiguracja, certyfikatami, fakturami i launcherem.
+### Konfigurowalny folder docelowy
+
+Domyslnie faktury zapisywane w `{NIP}\faktury\`. Mozna zmienic na dowolna lokalizacje:
+- OneDrive, dysk sieciowy, inna sciezka
+- Obsluga polskich znakow, spacji, dlugich sciezek
+- Zapisany w `.env` jako `FAKTURY_DIR=...`
 
 ## Konfiguracja
 
@@ -144,19 +191,27 @@ Konfiguracje mozna pozniej zmienic edytujac plik `.env` w folderze podatnika:
 # Token
 python ksef_client.py --nip 1234567890 --token "TOKEN" --output-dir ./faktury
 
+# Token zaszyfrowany (AES-256-GCM)
+python ksef_client.py --nip 1234567890 --token-enc "BASE64..." --token-keyfile certs/.aes_key --output-dir ./faktury
+
 # Token z pliku
 python ksef_client.py --nip 1234567890 --token-file token.txt --output-dir ./faktury
 
 # Certyfikat
 python ksef_client.py --nip 1234567890 --cert cert.crt --key key.key --output-dir ./faktury
 
-# Certyfikat z haslem (z pliku — bezpieczniejsze niz CLI)
-python ksef_client.py --nip 1234567890 --cert cert.crt --key key.key --encrypt-password-file haslo.txt --output-dir ./faktury
+# Certyfikat z zaszyfrowanym haslem
+python ksef_client.py --nip 1234567890 --cert cert.crt --key key.key \
+  --password-enc "BASE64..." --password-keyfile certs/.aes_key --output-dir ./faktury
+
+# Generowanie klucza AES i szyfrowanie hasla
+python ksef_client.py --generate-keyfile certs/.aes_key
+python ksef_client.py --encrypt-password "HASLO" --password-keyfile certs/.aes_key
 
 # Opcje dodatkowe
   --env test|demo|prod    Srodowisko KSeF (domyslnie: prod)
   --subject Subject1|2    Subject1=wystawione, Subject2=otrzymane (domyslnie: Subject2)
-  --days 30               Ile dni wstecz (domyslnie: 30)
+  --days 7                Ile dni wstecz (domyslnie: 7)
   -v                      Tryb verbose
 ```
 
@@ -181,12 +236,11 @@ python ksef_pdf.py faktura.xml faktura.pdf --ksef-number "1234567890-20250115-XX
 | Pakiet | Cel |
 |--------|-----|
 | requests | HTTP do KSeF API |
-| cryptography | RSA, ECDSA, X.509, szyfrowanie tokenu |
+| cryptography | RSA, ECDSA, X.509, AES-256-GCM |
 | lxml | XML + kanonizacja C14N (XAdES) |
 | reportlab | Generowanie PDF |
 | qrcode + pillow | Kody QR na fakturach |
 | defusedxml | Bezpieczne parsowanie XML |
-| python-dotenv | Ladowanie .env |
 
 ## Zrodla i projekty KSeF
 

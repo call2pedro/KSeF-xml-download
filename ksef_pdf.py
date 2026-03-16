@@ -130,6 +130,10 @@ GENERATOR_LINE_2 = (
 )
 GENERATOR_LINE_3 = "Autor: IT TASK FORCE Piotr Mierzenski — https://ittf.pl"
 
+# Szerokości kolumn tabeli pozycji (mm, None = elastyczna)
+ITEM_COL_WIDTHS = [10, None, 18, 22, 35, 22, 38]
+ITEM_COL_WIDTHS_WALUTA = [10, None, 18, 18, 30, 18, 32, 32]
+
 
 # ---------------------------------------------------------------------------
 # Font registration and styles
@@ -137,13 +141,22 @@ GENERATOR_LINE_3 = "Autor: IT TASK FORCE Piotr Mierzenski — https://ittf.pl"
 
 def _register_fonts() -> None:
     """Register Lato fonts for reportlab."""
+    if getattr(_register_fonts, '_done', False):
+        return
+    _register_fonts._done = True
     pdfmetrics.registerFont(TTFont("Lato", str(FONTS_DIR / "Lato-Regular.ttf")))
     pdfmetrics.registerFont(TTFont("Lato-Bold", str(FONTS_DIR / "Lato-Bold.ttf")))
 
 
+_CACHED_STYLES = None
+
+
 def _get_styles() -> dict:
     """Return a dict of ParagraphStyle objects for the document."""
-    return {
+    global _CACHED_STYLES
+    if _CACHED_STYLES is not None:
+        return _CACHED_STYLES
+    _CACHED_STYLES = {
         "normal": ParagraphStyle(
             "normal",
             fontName="Lato",
@@ -274,6 +287,7 @@ def _get_styles() -> dict:
             textColor=HexColor("#0000FF"),
         ),
     }
+    return _CACHED_STYLES
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +424,159 @@ def _parse_wiersz(element, ns):
     }
 
 
+def _parse_header(root, ns: dict) -> dict:
+    """Extract Naglowek fields from invoice root element."""
+    data: dict = {}
+    naglowek = _find(root, "ksef:Naglowek", ns)
+    if naglowek is not None:
+        kod_form = _find(naglowek, "ksef:KodFormularza", ns)
+        data["kod_formularza"] = kod_form.text if kod_form is not None else None
+        data["kod_systemowy"] = (
+            kod_form.get("kodSystemowy") if kod_form is not None else None
+        )
+        data["wersja_schemy"] = (
+            kod_form.get("wersjaSchemy") if kod_form is not None else None
+        )
+        data["wariant"] = _text(naglowek, "ksef:WariantFormularza", ns)
+        data["data_wytworzenia"] = _text(naglowek, "ksef:DataWytworzeniaFa", ns)
+        data["system_info"] = _text(naglowek, "ksef:SystemInfo", ns)
+    return data
+
+
+def _parse_invoice_details(fa, ns: dict) -> dict:
+    """Extract Fa section fields: dates, amounts, currency, corrections, line items."""
+    data: dict = {}
+    data["waluta"] = _text(fa, "ksef:KodWaluty", ns, "PLN")
+    data["data_wystawienia"] = _text(fa, "ksef:P_1", ns)  # P_1
+    data["miejsce_wystawienia"] = _text(fa, "ksef:P_1M", ns)  # P_1M
+    data["numer_faktury"] = _text(fa, "ksef:P_2", ns)  # P_2
+    data["data_dostawy"] = _text(fa, "ksef:P_6", ns)  # P_6
+    data["brutto_total"] = _text(fa, "ksef:P_15", ns)  # P_15
+    data["rodzaj_faktury"] = _text(fa, "ksef:RodzajFaktury", ns)
+    data["fp"] = _text(fa, "ksef:FP", ns)
+    data["tp"] = _text(fa, "ksef:TP", ns)
+
+    # OkresFa (okres fakturowania od-do)
+    okres = _find(fa, "ksef:OkresFa", ns)
+    if okres is not None:
+        data["okres_od"] = _text(okres, "ksef:P_4A", ns)
+        data["okres_do"] = _text(okres, "ksef:P_4B", ns)
+
+    # KursWalutyZ (kurs walutowy)
+    data["kurs_waluty"] = _text(fa, "ksef:KursWalutyZ", ns)
+
+    # Dane faktury korygowanej (korekta)
+    data["korekta_nr"] = _text(fa, "ksef:P_3A", ns)
+    data["korekta_data"] = _text(fa, "ksef:P_3B", ns)
+    data["korekta_przyczyna"] = _text(fa, "ksef:P_3C", ns)
+    data["korekta_nr_ksef"] = _text(fa, "ksef:P_3L", ns)
+
+    # FaWiersz (line items)
+    data["wiersze"] = [_parse_wiersz(w, ns) for w in _findall(fa, "ksef:FaWiersz", ns)]
+
+    return data
+
+
+def _parse_vat_summary(fa, ns: dict) -> dict:
+    """Extract VAT summary (P_13_x / P_14_x) per rate from Fa element."""
+    vat_summary = []
+    for net_suffix, vat_suffix, rate_label in VAT_RATE_FIELDS:
+        netto = _text(fa, f"ksef:P_13_{net_suffix}", ns)
+        vat = _text(fa, f"ksef:P_14_{vat_suffix}", ns)
+        if netto is not None:
+            vat_summary.append(
+                {
+                    "stawka": rate_label,
+                    "netto": netto,
+                    "vat": vat or "0.00",
+                }
+            )
+    return {"vat_summary": vat_summary}
+
+
+def _parse_annotations(fa, ns: dict) -> dict:
+    """Extract Adnotacje fields from Fa element."""
+    adnotacje: dict = {}
+    adnotacje_el = _find(fa, "ksef:Adnotacje", ns)
+    if adnotacje_el is not None:
+        for field in ["P_16", "P_17", "P_18", "P_18A", "P_23"]:
+            val = _text(adnotacje_el, f"ksef:{field}", ns)
+            if val:
+                adnotacje[field] = val
+        # Zwolnienie (P_19 + przepisy)
+        zwolnienie = _find(adnotacje_el, "ksef:Zwolnienie", ns)
+        if zwolnienie is not None:
+            p19 = _text(zwolnienie, "ksef:P_19", ns)
+            if p19:
+                adnotacje["P_19"] = p19
+            adnotacje["P_19A"] = _text(zwolnienie, "ksef:P_19A", ns)
+            adnotacje["P_19B"] = _text(zwolnienie, "ksef:P_19B", ns)
+            adnotacje["P_19C"] = _text(zwolnienie, "ksef:P_19C", ns)
+    return {"adnotacje": adnotacje}
+
+
+def _parse_payment(fa, ns: dict) -> dict:
+    """Extract Platnosc fields from Fa element."""
+    platnosc_el = _find(fa, "ksef:Platnosc", ns)
+    if platnosc_el is None:
+        return {"platnosc": {}}
+    platnosc: dict = {
+        "zaplacono": _text(platnosc_el, "ksef:Zaplacono", ns),
+        "data_zaplaty": _text(platnosc_el, "ksef:DataZaplaty", ns),
+        "forma": _text(platnosc_el, "ksef:FormaPlatnosci", ns),
+        "termin": _text(platnosc_el, "ksef:TerminPlatnosci", ns),
+    }
+    # RachunekBankowy
+    rachunek = _find(platnosc_el, "ksef:RachunekBankowy", ns)
+    if rachunek is not None:
+        platnosc["nr_rachunku"] = _text(rachunek, "ksef:NrRB", ns)
+        platnosc["nazwa_banku"] = _text(rachunek, "ksef:NazwaBanku", ns)
+    return {"platnosc": platnosc}
+
+
+def _parse_additional_info(fa, root, ns: dict) -> dict:
+    """Extract DodatkowyOpis, WarunkiTransakcji and Stopka fields."""
+    data: dict = {}
+
+    # DodatkowyOpis (may be multiple)
+    dodatkowe_opisy = []
+    for do_el in _findall(fa, "ksef:DodatkowyOpis", ns):
+        klucz = _text(do_el, "ksef:Klucz", ns)
+        wartosc = _text(do_el, "ksef:Wartosc", ns)
+        if klucz and wartosc:
+            dodatkowe_opisy.append({"klucz": klucz, "wartosc": wartosc})
+    data["dodatkowy_opis"] = dodatkowe_opisy
+
+    # WarunkiTransakcji
+    warunki = _find(fa, "ksef:WarunkiTransakcji", ns)
+    if warunki is not None:
+        data["zamowienia"] = [
+            {
+                "data": _text(zam, "ksef:DataZamowienia", ns),
+                "numer": _text(zam, "ksef:NrZamowienia", ns),
+            }
+            for zam in _findall(warunki, "ksef:Zamowienia", ns)
+        ]
+    else:
+        data["zamowienia"] = []
+
+    # Stopka (at root level, not inside Fa)
+    stopka_data: dict = {}
+    stopka = _find(root, "ksef:Stopka", ns)
+    if stopka is not None:
+        info = _find(stopka, "ksef:Informacje", ns)
+        if info is not None:
+            stopka_data["tekst"] = _text(info, "ksef:StopkaFaktury", ns)
+        rejestry = _find(stopka, "ksef:Rejestry", ns)
+        if rejestry is not None:
+            stopka_data["krs"] = _text(rejestry, "ksef:KRS", ns)
+            stopka_data["regon"] = _text(rejestry, "ksef:REGON", ns)
+            stopka_data["bdo"] = _text(rejestry, "ksef:BDO", ns)
+    data["stopka"] = stopka_data
+
+    return data
+
+
 def parse_ksef_xml(xml_path: Path) -> dict:
     """Parse a KSeF XML invoice and return a normalized dict.
 
@@ -436,22 +603,10 @@ def parse_ksef_xml(xml_path: Path) -> dict:
 
     ns = {"ksef": ns_uri}
 
-    data = {"namespace": ns_uri}
+    data: dict = {"namespace": ns_uri}
 
     # --- Naglowek ---
-    naglowek = _find(root, "ksef:Naglowek", ns)
-    if naglowek is not None:
-        kod_form = _find(naglowek, "ksef:KodFormularza", ns)
-        data["kod_formularza"] = kod_form.text if kod_form is not None else None
-        data["kod_systemowy"] = (
-            kod_form.get("kodSystemowy") if kod_form is not None else None
-        )
-        data["wersja_schemy"] = (
-            kod_form.get("wersjaSchemy") if kod_form is not None else None
-        )
-        data["wariant"] = _text(naglowek, "ksef:WariantFormularza", ns)
-        data["data_wytworzenia"] = _text(naglowek, "ksef:DataWytworzeniaFa", ns)
-        data["system_info"] = _text(naglowek, "ksef:SystemInfo", ns)
+    data.update(_parse_header(root, ns))
 
     # --- Podmiot1 (Sprzedawca) ---
     data["sprzedawca"] = _parse_podmiot(_find(root, "ksef:Podmiot1", ns), ns)
@@ -472,125 +627,14 @@ def parse_ksef_xml(xml_path: Path) -> dict:
     # --- Fa ---
     fa = _find(root, "ksef:Fa", ns)
     if fa is not None:
-        data["waluta"] = _text(fa, "ksef:KodWaluty", ns, "PLN")
-        data["data_wystawienia"] = _text(fa, "ksef:P_1", ns)  # P_1
-        data["miejsce_wystawienia"] = _text(fa, "ksef:P_1M", ns)  # P_1M
-        data["numer_faktury"] = _text(fa, "ksef:P_2", ns)  # P_2
-        data["data_dostawy"] = _text(fa, "ksef:P_6", ns)  # P_6
-        data["brutto_total"] = _text(fa, "ksef:P_15", ns)  # P_15
-        data["rodzaj_faktury"] = _text(fa, "ksef:RodzajFaktury", ns)
-        data["fp"] = _text(fa, "ksef:FP", ns)
-        data["tp"] = _text(fa, "ksef:TP", ns)
-
-        # OkresFa (okres fakturowania od-do)
-        okres = _find(fa, "ksef:OkresFa", ns)
-        if okres is not None:
-            data["okres_od"] = _text(okres, "ksef:P_4A", ns)
-            data["okres_do"] = _text(okres, "ksef:P_4B", ns)
-
-        # KursWalutyZ (kurs walutowy)
-        data["kurs_waluty"] = _text(fa, "ksef:KursWalutyZ", ns)
-
-        # Dane faktury korygowanej (korekta)
-        data["korekta_nr"] = _text(fa, "ksef:P_3A", ns)
-        data["korekta_data"] = _text(fa, "ksef:P_3B", ns)
-        data["korekta_przyczyna"] = _text(fa, "ksef:P_3C", ns)
-        data["korekta_nr_ksef"] = _text(fa, "ksef:P_3L", ns)
-
-        # VAT summary fields P_13_x (netto) and P_14_x (VAT) per rate
-        vat_summary = []
-        for net_suffix, vat_suffix, rate_label in VAT_RATE_FIELDS:
-            netto = _text(fa, f"ksef:P_13_{net_suffix}", ns)
-            vat = _text(fa, f"ksef:P_14_{vat_suffix}", ns)
-            if netto is not None:
-                vat_summary.append(
-                    {
-                        "stawka": rate_label,
-                        "netto": netto,
-                        "vat": vat or "0.00",
-                    }
-                )
-        data["vat_summary"] = vat_summary
-
-        # Adnotacje
-        adnotacje = _find(fa, "ksef:Adnotacje", ns)
-        data["adnotacje"] = {}
-        if adnotacje is not None:
-            for field in ["P_16", "P_17", "P_18", "P_18A", "P_23"]:
-                val = _text(adnotacje, f"ksef:{field}", ns)
-                if val:
-                    data["adnotacje"][field] = val
-            # Zwolnienie (P_19 + przepisy)
-            zwolnienie = _find(adnotacje, "ksef:Zwolnienie", ns)
-            if zwolnienie is not None:
-                p19 = _text(zwolnienie, "ksef:P_19", ns)
-                if p19:
-                    data["adnotacje"]["P_19"] = p19
-                data["adnotacje"]["P_19A"] = _text(zwolnienie, "ksef:P_19A", ns)
-                data["adnotacje"]["P_19B"] = _text(zwolnienie, "ksef:P_19B", ns)
-                data["adnotacje"]["P_19C"] = _text(zwolnienie, "ksef:P_19C", ns)
-
-        # DodatkowyOpis (may be multiple)
-        dodatkowe_opisy = []
-        for do_el in _findall(fa, "ksef:DodatkowyOpis", ns):
-            klucz = _text(do_el, "ksef:Klucz", ns)
-            wartosc = _text(do_el, "ksef:Wartosc", ns)
-            if klucz and wartosc:
-                dodatkowe_opisy.append({"klucz": klucz, "wartosc": wartosc})
-        data["dodatkowy_opis"] = dodatkowe_opisy
-
-        # FaWiersz (line items)
-        wiersze = []
-        for w in _findall(fa, "ksef:FaWiersz", ns):
-            wiersze.append(_parse_wiersz(w, ns))
-        data["wiersze"] = wiersze
-
-        # Platnosc
-        platnosc = _find(fa, "ksef:Platnosc", ns)
-        if platnosc is not None:
-            data["platnosc"] = {
-                "zaplacono": _text(platnosc, "ksef:Zaplacono", ns),
-                "data_zaplaty": _text(platnosc, "ksef:DataZaplaty", ns),
-                "forma": _text(platnosc, "ksef:FormaPlatnosci", ns),
-                "termin": _text(platnosc, "ksef:TerminPlatnosci", ns),
-            }
-            # RachunekBankowy
-            rachunek = _find(platnosc, "ksef:RachunekBankowy", ns)
-            if rachunek is not None:
-                data["platnosc"]["nr_rachunku"] = _text(rachunek, "ksef:NrRB", ns)
-                data["platnosc"]["nazwa_banku"] = _text(
-                    rachunek, "ksef:NazwaBanku", ns
-                )
-        else:
-            data["platnosc"] = {}
-
-        # WarunkiTransakcji
-        warunki = _find(fa, "ksef:WarunkiTransakcji", ns)
-        if warunki is not None:
-            zamowienia = []
-            for zam in _findall(warunki, "ksef:Zamowienia", ns):
-                zamowienia.append(
-                    {
-                        "data": _text(zam, "ksef:DataZamowienia", ns),
-                        "numer": _text(zam, "ksef:NrZamowienia", ns),
-                    }
-                )
-            data["zamowienia"] = zamowienia
-        else:
-            data["zamowienia"] = []
-
-    # --- Stopka ---
-    stopka = _find(root, "ksef:Stopka", ns)
-    data["stopka"] = {}
-    if stopka is not None:
-        info = _find(stopka, "ksef:Informacje", ns)
-        if info is not None:
-            data["stopka"]["tekst"] = _text(info, "ksef:StopkaFaktury", ns)
-        rejestry = _find(stopka, "ksef:Rejestry", ns)
-        if rejestry is not None:
-            data["stopka"]["krs"] = _text(rejestry, "ksef:KRS", ns)
-            data["stopka"]["regon"] = _text(rejestry, "ksef:REGON", ns)
-            data["stopka"]["bdo"] = _text(rejestry, "ksef:BDO", ns)
+        data.update(_parse_invoice_details(fa, ns))
+        data.update(_parse_vat_summary(fa, ns))
+        data.update(_parse_annotations(fa, ns))
+        data.update(_parse_payment(fa, ns))
+        data.update(_parse_additional_info(fa, root, ns))
+    else:
+        # Ensure keys expected by the renderer are always present
+        data.setdefault("stopka", {})
 
     return data
 
@@ -1108,25 +1152,12 @@ class InvoicePDF:
             "Stawka VAT",
             "Wartość netto",
         ]
-        col_widths_mm = [
-            10,    # Lp
-            None,  # Nazwa — flexible (remainder)
-            18,    # Jedn
-            22,    # Ilość
-            35,    # Cena netto
-            22,    # Stawka VAT
-            38,    # Wartość netto
-        ]
-
         if has_p11a:
             p11a_label = f"Netto {waluta}" if waluta and waluta != "PLN" else "Netto wal. obca"
             headers.append(p11a_label)
-            # Shrink fixed columns to fit extra column within page width
-            col_widths_mm[3] = 18   # Ilość: 22 -> 18
-            col_widths_mm[4] = 30   # Cena netto: 35 -> 30
-            col_widths_mm[5] = 18   # Stawka VAT: 22 -> 18
-            col_widths_mm[6] = 32   # Wartość netto: 38 -> 32
-            col_widths_mm.append(32) # Netto wal. obca
+            col_widths_mm = list(ITEM_COL_WIDTHS_WALUTA)
+        else:
+            col_widths_mm = list(ITEM_COL_WIDTHS)
 
         # Compute flexible Nazwa column width
         fixed_total_mm = sum(w for w in col_widths_mm if w is not None)
@@ -1872,9 +1903,13 @@ def _process_directory(
                 generate_invoice_pdf(
                     data, pdf_path, xml_path=xml_path, ksef_nr=ksef_nr
                 )
-            except ValueError:
-                data = parse_upo_xml(xml_path)
-                generate_upo_pdf(data, pdf_path)
+            except ValueError as e:
+                if "Nieznany" in str(e):
+                    # Nie rozpoznano jako faktura KSeF — proba jako UPO
+                    data = parse_upo_xml(xml_path)
+                    generate_upo_pdf(data, pdf_path)
+                else:
+                    raise
             processed += 1
             print(f"OK: {xml_path.name} -> {pdf_path.name}")
         except Exception as exc:
