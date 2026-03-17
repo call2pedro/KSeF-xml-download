@@ -19,6 +19,7 @@ __pycache__
 
 # Tests
 test_*.py
+test_*.xml
 
 # Dev tooling
 uv.lock

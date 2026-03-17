@@ -48,7 +48,6 @@ WORKDIR /app
 
 COPY ksef_client.py ksef_pdf.py ./
 COPY fonts/ ./fonts/
-COPY test_faktura.xml ./
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh

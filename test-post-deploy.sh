@@ -41,8 +41,8 @@ run_test "Import Python OK" \
 run_test "ksef_client.py --help" \
     "$COMPOSE exec -T ksef-xml-download python /app/ksef_client.py --help"
 
-run_test "PDF z testowej faktury" \
-    "$COMPOSE exec -T ksef-xml-download runuser -u ksef -- python /app/ksef_pdf.py invoice /app/test_faktura.xml /tmp/test.pdf"
+run_test "ksef_pdf.py --help" \
+    "$COMPOSE exec -T ksef-xml-download python /app/ksef_pdf.py --help"
 
 run_test "Cron skonfigurowany" \
     "$COMPOSE exec -T ksef-xml-download crontab -l 2>/dev/null | grep -q entrypoint"
