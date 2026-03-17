@@ -827,29 +827,22 @@ echo.
 set /p "CUSTOM_FAKTURY_DIR=  Sciezka: "
 :skip_custom_dir
 
-if defined CUSTOM_FAKTURY_DIR (
-    set "XML_DIR=!CUSTOM_FAKTURY_DIR!"
-) else (
-    set "XML_DIR=!NIP_DIR!\faktury"
-)
+set "XML_DIR=!NIP_DIR!\faktury"
+if defined CUSTOM_FAKTURY_DIR set "XML_DIR=!CUSTOM_FAKTURY_DIR!"
 
 mkdir "!NIP_DIR!" >nul 2>&1
 
 set "XML_DIR_EXISTED=0"
 if exist "!XML_DIR!" set "XML_DIR_EXISTED=1"
 mkdir "!XML_DIR!" >nul 2>&1
-if not exist "!XML_DIR!" (
-    echo  !C_E![BLAD]!C_0! Nie udalo sie utworzyc folderu: !XML_DIR!
-    echo  Sprawdz czy sciezka jest poprawna i masz uprawnienia.
-    goto :error_exit
-)
+if not exist "!XML_DIR!" echo  !C_E![BLAD]!C_0! Nie udalo sie utworzyc folderu: !XML_DIR!
+if not exist "!XML_DIR!" echo  Sprawdz czy sciezka jest poprawna i masz uprawnienia.
+if not exist "!XML_DIR!" goto :error_exit
 echo.
 echo        Folder podatnika: !NIP_DIR!
-if "!XML_DIR_EXISTED!"=="1" (
-    echo        Katalog faktur:   !XML_DIR!  (istniejacy)
-) else (
-    echo        Katalog faktur:   !XML_DIR!  (utworzony)
-)
+set "DIR_STATUS=(utworzony)"
+if "!XML_DIR_EXISTED!"=="1" set "DIR_STATUS=(istniejacy)"
+echo        Katalog faktur:   !XML_DIR!  !DIR_STATUS!
 echo [%DATE% %TIME%] [5/6] XML_DIR=!XML_DIR! (existed=!XML_DIR_EXISTED!) >> "%LOG_FILE%"
 
 :: Kopiuj certyfikat i klucz do folderu NIP (jesli auth certyfikatem i podano nowe pliki)
@@ -908,11 +901,12 @@ if "!AUTH_METHOD!"=="token" (
 )
 
 :: --- Plik .env ---
-echo AUTH_METHOD=!AUTH_METHOD!> "!NIP_DIR!\.env"
-echo CONTEXT_NIP=!CONTEXT_NIP!>> "!NIP_DIR!\.env"
-if "!AUTH_METHOD!"=="token" echo KSEF_TOKEN_ENC=!TOKEN_ENC!>> "!NIP_DIR!\.env"
-if "!AUTH_METHOD!"=="certificate" if "!KEY_PASSWORD_ENC!" neq "" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!>> "!NIP_DIR!\.env"
-if defined CUSTOM_FAKTURY_DIR echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!>> "!NIP_DIR!\.env"
+:: Zapis linia po linii przez redirect (bezpieczne dla polskich znakow i spacji)
+> "!NIP_DIR!\.env" echo AUTH_METHOD=!AUTH_METHOD!
+>> "!NIP_DIR!\.env" echo CONTEXT_NIP=!CONTEXT_NIP!
+if "!AUTH_METHOD!"=="token" >> "!NIP_DIR!\.env" echo KSEF_TOKEN_ENC=!TOKEN_ENC!
+if "!AUTH_METHOD!"=="certificate" if "!KEY_PASSWORD_ENC!" neq "" >> "!NIP_DIR!\.env" echo KEY_PASSWORD_ENC=!KEY_PASSWORD_ENC!
+if defined CUSTOM_FAKTURY_DIR >> "!NIP_DIR!\.env" echo FAKTURY_DIR=!CUSTOM_FAKTURY_DIR!
 echo        .env utworzony
 
 :: --- Weryfikacja generatora PDF ---
@@ -1218,34 +1212,32 @@ echo.
 
 :: --- Kolorowe podsumowanie ---
 set "PS_SUMMARY=%TEMP%\ksef-summary.ps1"
-> "%PS_SUMMARY%" (
-    echo $w = 60
-    echo try { $cols = $Host.UI.RawUI.WindowSize.Width } catch { $cols = 80 }
-    echo $pad = [Math]::Max(0, [Math]::Floor(($cols - $w^) / 2^)^)
-    echo $sp = ' ' * $pad
-    echo $line = '=' * $w
-    echo Write-Host ''
-    echo Write-Host "$sp$line" -ForegroundColor Green
-    echo Write-Host ''
-    echo $m1 = 'GOTOWE! Plik pobierania faktur:'
-    echo $p1 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m1.Length^) / 2^)^)
-    echo Write-Host "$sp$p1$m1" -ForegroundColor White
-    echo Write-Host ''
-    echo $m2 = '!NIP_DIR!\pobierz-faktury.bat'
-    echo $p2 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m2.Length^) / 2^)^)
-    echo Write-Host "$sp$p2$m2" -ForegroundColor Yellow -BackgroundColor DarkBlue
-    echo Write-Host ''
-    echo $m3 = 'Kliknij dwukrotnie, aby pobrac faktury XML z KSeF.'
-    echo $p3 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m3.Length^) / 2^)^)
-    echo Write-Host "$sp$p3$m3" -ForegroundColor Cyan
-    echo Write-Host ''
-    echo $m4 = 'Faktury: !XML_DIR!'
-    echo $p4 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m4.Length^) / 2^)^)
-    echo Write-Host "$sp$p4$m4" -ForegroundColor Gray
-    echo Write-Host ''
-    echo Write-Host "$sp$line" -ForegroundColor Green
-    echo Write-Host ''
-)
+> "%PS_SUMMARY%" echo $w = 60
+>> "%PS_SUMMARY%" echo try { $cols = $Host.UI.RawUI.WindowSize.Width } catch { $cols = 80 }
+>> "%PS_SUMMARY%" echo $pad = [Math]::Max(0, [Math]::Floor(($cols - $w) / 2))
+>> "%PS_SUMMARY%" echo $sp = ' ' * $pad
+>> "%PS_SUMMARY%" echo $line = '=' * $w
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo Write-Host "$sp$line" -ForegroundColor Green
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo $m1 = 'GOTOWE. Plik pobierania faktur:'
+>> "%PS_SUMMARY%" echo $p1 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m1.Length) / 2))
+>> "%PS_SUMMARY%" echo Write-Host "$sp$p1$m1" -ForegroundColor White
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo $m2 = '!NIP_DIR!\pobierz-faktury.bat'
+>> "%PS_SUMMARY%" echo $p2 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m2.Length) / 2))
+>> "%PS_SUMMARY%" echo Write-Host "$sp$p2$m2" -ForegroundColor Yellow -BackgroundColor DarkBlue
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo $m3 = 'Kliknij dwukrotnie, aby pobrac faktury XML z KSeF.'
+>> "%PS_SUMMARY%" echo $p3 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m3.Length) / 2))
+>> "%PS_SUMMARY%" echo Write-Host "$sp$p3$m3" -ForegroundColor Cyan
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo $m4 = 'Faktury: !XML_DIR!'
+>> "%PS_SUMMARY%" echo $p4 = ' ' * [Math]::Max(0, [Math]::Floor(($w - $m4.Length) / 2))
+>> "%PS_SUMMARY%" echo Write-Host "$sp$p4$m4" -ForegroundColor Gray
+>> "%PS_SUMMARY%" echo Write-Host ''
+>> "%PS_SUMMARY%" echo Write-Host "$sp$line" -ForegroundColor Green
+>> "%PS_SUMMARY%" echo Write-Host ''
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SUMMARY%"
 del "%PS_SUMMARY%" >nul 2>&1
 
@@ -1263,11 +1255,8 @@ set "PS_SHORTCUT=%TEMP%\ksef-shortcut.ps1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_SHORTCUT%"
 set "SC_ERR=!ERRORLEVEL!"
 del "%PS_SHORTCUT%" >nul 2>&1
-if !SC_ERR! equ 0 (
-    echo        Skrot "Faktury KSeF - !CONTEXT_NIP!" utworzony na Pulpicie.
-) else (
-    echo  !C_Q![UWAGA]!C_0! Nie udalo sie utworzyc skrotu na Pulpicie.
-)
+if !SC_ERR! equ 0 echo        Skrot "Faktury KSeF - !CONTEXT_NIP!" utworzony na Pulpicie.
+if !SC_ERR! neq 0 echo  !C_Q![UWAGA]!C_0! Nie udalo sie utworzyc skrotu na Pulpicie.
 
 echo [%DATE% %TIME%] Instalacja zakonczona pomyslnie >> "%LOG_FILE%"
 goto :normal_exit
