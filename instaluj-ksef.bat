@@ -817,11 +817,11 @@ set "NIP_DIR=%INSTALL_DIR%\!CONTEXT_NIP!"
 echo.
 echo  Gdzie zapisywac pobrane faktury?
 echo.
-echo    [1] Domyslnie: !NIP_DIR!\faktury  (auto za 15s)
+echo    [1] Domyslnie: !NIP_DIR!\faktury
 echo    [2] Wlasna lokalizacja (np. OneDrive, dysk sieciowy)
 echo.
-choice /c 12 /t 15 /d 1 /n /m "  Wybierz [1-2]: "
-set "DIR_CHOICE=!ERRORLEVEL!"
+set "DIR_CHOICE=1"
+set /p "DIR_CHOICE=  Wybierz [1-2] (domyslnie 1): "
 
 set "CUSTOM_FAKTURY_DIR="
 if "!DIR_CHOICE!" neq "2" goto :skip_custom_dir
@@ -940,211 +940,209 @@ set "LAUNCHER=!NIP_DIR!\pobierz-faktury.bat"
 set "GEN_NIP=!CONTEXT_NIP!"
 set "GEN_AUTH=!AUTH_METHOD!"
 setlocal DisableDelayedExpansion
-(
-    echo @echo off
-    echo chcp 65001 ^>nul 2^>^&1
-    echo setlocal EnableDelayedExpansion
-    echo.
-    echo :: Kolory ANSI
-    echo for /f %%%%e in ('"prompt $E ^& for %%%%b in (1) do rem"') do set "ESC=%%%%e"
-    echo set "C_I=!ESC![96m"
-    echo set "C_P=!ESC![92m"
-    echo set "C_Q=!ESC![93m"
-    echo set "C_E=!ESC![91m"
-    echo set "C_0=!ESC![0m"
-    echo.
-    echo :: --- Tryb pracy: --auto (harmonogram) lub interaktywny ---
-    echo set "AUTO_MODE=0"
-    echo if "%%~1"=="--auto" set "AUTO_MODE=1"
-    echo.
-    echo if "%%AUTO_MODE%%"=="0" title Pobieranie faktur z KSeF + generowanie PDF
-    echo.
-    echo :: --- Lockfile: zapobieganie rownoleglym uruchomieniom ---
-    echo set "LOCKFILE=%%NIPDIR%%\pobierz-faktury.lock"
-    echo if exist "%%LOCKFILE%%" ^(
-    echo     echo [%%DATE%% %%TIME%%] Inny proces juz pobiera faktury. Przerywam. ^>^> "%%LOG%%"
-    echo     if "%%AUTO_MODE%%"=="0" echo  !C_Q![UWAGA]!C_0! Inny proces juz pobiera faktury. Przerywam.
-    echo     exit /b 0
-    echo ^)
-    echo echo %%DATE%% %%TIME%% ^> "%%LOCKFILE%%"
-    echo.
-    echo :: --- Sciezki ---
-    echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
-    echo set "NIPDIR=%%KSEF%%\%GEN_NIP%"
-    echo.
-    echo :: --- Log ---
-    echo set "LOG=%%NIPDIR%%\pobierz-faktury.log"
-    echo echo =============================== ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] START (auto=%%AUTO_MODE%%^) ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] USER=%%USERNAME%% COMPUTER=%%COMPUTERNAME%% ^>^> "%%LOG%%"
-    echo.
-    echo :: Zaladuj zmienne z .env do srodowiska
-    echo for /f "usebackq tokens=*" %%%%L in ^("%%NIPDIR%%\.env"^) do set "%%%%L"
-    echo.
-    echo :: Katalog faktur - z .env (FAKTURY_DIR) lub domyslny
-    echo if defined FAKTURY_DIR ^(
-    echo     set "XML_DIR=%%FAKTURY_DIR%%"
-    echo ^) else ^(
-    echo     set "XML_DIR=%%NIPDIR%%\faktury"
-    echo ^)
-    echo mkdir "%%XML_DIR%%" ^>nul 2^>^&1
-    echo.
-    echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] XML_DIR=%%XML_DIR%% ^>^> "%%LOG%%"
-    echo.
-    echo :: --- Tryb automatyczny: 7 dni, bez menu ---
-    echo if "%%AUTO_MODE%%"=="1" ^(
-    echo     set "DAYS=7"
-    echo     echo [%%DATE%% %%TIME%%] Tryb automatyczny: 7 dni wstecz ^>^> "%%LOG%%"
-    echo     goto :run_fetch
-    echo ^)
-    echo.
-    echo :: --- Tryb interaktywny: menu wyboru okresu ---
-    echo echo.
-    echo echo  Pobieranie faktur XML z KSeF
-    echo echo  ========================================
-    echo echo.
-    echo echo  NIP: %GEN_NIP%
-    echo echo  Katalog faktur: %%XML_DIR%%
-    echo echo.
-    echo echo  Wybierz okres pobierania:
-    echo echo.
-    echo echo    [1] Ostatnie 7 dni  (domyslnie - auto za 10s^)
-    echo echo    [2] Biezacy miesiac
-    echo echo    [3] Poprzedni miesiac
-    echo echo    [4] Biezacy kwartal
-    echo echo    [5] Biezacy rok
-    echo echo    [6] Wszystko (365 dni^)
-    echo echo.
-    echo choice /c 123456 /t 10 /d 1 /n /m "  Wybierz [1-6]: "
-    echo set "PERIOD_CHOICE=%%ERRORLEVEL%%"
-    echo.
-    echo :: Oblicz --days na podstawie wyboru
-    echo set "DAYS=7"
-    echo if "%%PERIOD_CHOICE%%"=="1" set "DAYS=7"
-    echo if "%%PERIOD_CHOICE%%"=="2" (
-    echo     :: Biezacy miesiac: dni od 1-go do dzis
-    echo     for /f "tokens=1-3 delims=/" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
-    echo     for /f "tokens=1-3 delims=." %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
-    echo     for /f "tokens=1-3 delims=-" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%c"
-    echo     if not defined TODAY_DAY set "TODAY_DAY=30"
-    echo     set "DAYS=%%TODAY_DAY%%"
-    echo ^)
-    echo if "%%PERIOD_CHOICE%%"=="3" (
-    echo     :: Poprzedni miesiac: 60 dni wstecz
-    echo     set "DAYS=60"
-    echo ^)
-    echo if "%%PERIOD_CHOICE%%"=="4" (
-    echo     :: Biezacy kwartal: 90 dni
-    echo     set "DAYS=90"
-    echo ^)
-    echo if "%%PERIOD_CHOICE%%"=="5" (
-    echo     :: Biezacy rok: 365 dni
-    echo     set "DAYS=365"
-    echo ^)
-    echo if "%%PERIOD_CHOICE%%"=="6" set "DAYS=365"
-    echo.
-    echo echo  Okres: %%DAYS%% dni wstecz
-    echo echo.
-    echo.
-    echo :run_fetch
-    echo echo [%%DATE%% %%TIME%%] Okres: %%DAYS%% dni wstecz ^>^> "%%LOG%%"
-    echo.
-    echo :: --- Buduj argumenty ksef_client.py ---
-    echo set FETCH_ARGS=--nip %GEN_NIP% --output-dir "%%XML_DIR%%" --days %%DAYS%%
-    echo.
-    echo if "%%AUTH_METHOD%%"=="token" ^(
-    echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
-    echo     set "FETCH_ARGS=!FETCH_ARGS! --token-enc %%KSEF_TOKEN_ENC%% --token-keyfile %%NIPDIR%%\certs\.aes_key"
-    echo ^)
-    echo.
-    echo if "%%AUTH_METHOD%%"=="certificate" ^(
-    echo     echo [%%DATE%% %%TIME%%] Metoda: certyfikat ^>^> "%%LOG%%"
-    echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%NIPDIR%%\certs\auth_cert.crt --key %%NIPDIR%%\certs\auth_key.key"
-    echo     :: Przekaz zaszyfrowane haslo jesli jest
-    echo     if defined KEY_PASSWORD_ENC ^(
-    echo         set "FETCH_ARGS=!FETCH_ARGS! --password-enc !KEY_PASSWORD_ENC! --password-keyfile %%NIPDIR%%\certs\.aes_key"
-    echo     ^)
-    echo ^)
-    echo.
-    echo if "%%AUTO_MODE%%"=="0" echo  Katalog docelowy: %%XML_DIR%%
-    echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef_client.py... ^>^> "%%LOG%%"
-    echo echo [%%DATE%% %%TIME%%] FETCH_ARGS=!FETCH_ARGS! ^>^> "%%LOG%%"
-    echo cd /d "%%NIPDIR%%"
-    echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! -v 2^>^>"%%LOG%%"
-    echo set "FETCH_ERR=!ERRORLEVEL!"
-    echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
-    echo.
-    echo :: (token przekazywany zaszyfrowany — brak pliku tymczasowego)
-    echo.
-    echo if !FETCH_ERR! neq 0 ^(
-    echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
-    echo     if "%%AUTO_MODE%%"=="0" ^(
-    echo         echo.
-    echo         echo  !C_E![BLAD]!C_0! Pobieranie faktur nie powiodlo sie.
-    echo         echo         Szczegoly w logu: %%LOG%%
-    echo         echo.
-    echo     ^)
-    echo     del "%%LOCKFILE%%" ^>nul 2^>^&1
-    echo     exit /b 1
-    echo ^)
-    echo.
-    echo :: --- Generowanie PDF ---
-    echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
-    echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
-    echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
-    echo     if "%%AUTO_MODE%%"=="0" echo  !C_I![INFO]!C_0! Brak ksef_pdf.py - generowanie PDF pominiete.
-    echo     goto :skip_pdf
-    echo ^)
-    echo.
-    echo if "%%AUTO_MODE%%"=="0" ^(
-    echo     echo.
-    echo     echo  Generowanie PDF z pobranych faktur...
-    echo     echo  ========================================
-    echo     echo.
-    echo ^)
-    echo.
-    echo set "PDF_COUNT=0"
-    echo set "PDF_ERR=0"
-    echo set "PDF_SKIP=0"
-    echo.
-    echo for /R "%%XML_DIR%%" %%%%f in ^(*.xml^) do ^(
-    echo     if not exist "%%%%~dpnf.pdf" ^(
-    echo         if "%%AUTO_MODE%%"=="0" echo   PDF: %%%%~nxf
-    echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf -^> %%%%~dpnf.pdf ^>^> "%%LOG%%"
-    echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
-    echo         if !ERRORLEVEL! equ 0 ^(
-    echo             set /a PDF_COUNT+=1
-    echo         ^) else ^(
-    echo             set /a PDF_ERR+=1
-    echo             if "%%AUTO_MODE%%"=="0" echo   [*] Blad: %%%%~nxf
-    echo             echo [%%DATE%% %%TIME%%] BLAD PDF: %%%%~nxf ^>^> "%%LOG%%"
-    echo         ^)
-    echo     ^) else ^(
-    echo         set /a PDF_SKIP+=1
-    echo     ^)
-    echo ^)
-    echo.
-    echo echo [%%DATE%% %%TIME%%] PDF: !PDF_COUNT! nowych, !PDF_ERR! bledow, !PDF_SKIP! istniejacych ^>^> "%%LOG%%"
-    echo if "%%AUTO_MODE%%"=="0" ^(
-    echo     echo.
-    echo     if !PDF_COUNT! gtr 0 echo  Wygenerowano !PDF_COUNT! nowych PDF.
-    echo     if !PDF_ERR! gtr 0 echo  Bledy przy !PDF_ERR! plikach.
-    echo     if !PDF_SKIP! gtr 0 echo  Pominieto !PDF_SKIP! - PDF juz istnieje.
-    echo     if !PDF_COUNT!==0 if !PDF_ERR!==0 if !PDF_SKIP!==0 echo  Brak plikow XML w folderze %%XML_DIR%%.
-    echo ^)
-    echo.
-    echo :skip_pdf
-    echo del "%%LOCKFILE%%" ^>nul 2^>^&1
-    echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
-    echo if "%%AUTO_MODE%%"=="0" ^(
-    echo     echo.
-    echo     echo  ========================================
-    echo     echo  Gotowe.
-    echo     echo  Katalog faktur: %%XML_DIR%%
-    echo     echo  Log: %%LOG%%
-    echo ^)
-) > "%LAUNCHER%"
+> "%LAUNCHER%" echo @echo off
+>> "%LAUNCHER%" echo chcp 65001 ^>nul 2^>^&1
+>> "%LAUNCHER%" echo setlocal EnableDelayedExpansion
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: Kolory ANSI
+>> "%LAUNCHER%" echo for /f %%%%e in ('"prompt $E ^& for %%%%b in (1) do rem"') do set "ESC=%%%%e"
+>> "%LAUNCHER%" echo set "C_I=!ESC![96m"
+>> "%LAUNCHER%" echo set "C_P=!ESC![92m"
+>> "%LAUNCHER%" echo set "C_Q=!ESC![93m"
+>> "%LAUNCHER%" echo set "C_E=!ESC![91m"
+>> "%LAUNCHER%" echo set "C_0=!ESC![0m"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Tryb pracy: --auto (harmonogram) lub interaktywny ---
+>> "%LAUNCHER%" echo set "AUTO_MODE=0"
+>> "%LAUNCHER%" echo if "%%~1"=="--auto" set "AUTO_MODE=1"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" title Pobieranie faktur z KSeF + generowanie PDF
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Lockfile: zapobieganie rownoleglym uruchomieniom ---
+>> "%LAUNCHER%" echo set "LOCKFILE=%%NIPDIR%%\pobierz-faktury.lock"
+>> "%LAUNCHER%" echo if exist "%%LOCKFILE%%" ^(
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] Inny proces juz pobiera faktury. Przerywam. ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     if "%%AUTO_MODE%%"=="0" echo  !C_Q![UWAGA]!C_0! Inny proces juz pobiera faktury. Przerywam.
+>> "%LAUNCHER%" echo     exit /b 0
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo echo %%DATE%% %%TIME%% ^> "%%LOCKFILE%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Sciezki ---
+>> "%LAUNCHER%" echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
+>> "%LAUNCHER%" echo set "NIPDIR=%%KSEF%%\%GEN_NIP%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Log ---
+>> "%LAUNCHER%" echo set "LOG=%%NIPDIR%%\pobierz-faktury.log"
+>> "%LAUNCHER%" echo echo =============================== ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] START (auto=%%AUTO_MODE%%^) ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] USER=%%USERNAME%% COMPUTER=%%COMPUTERNAME%% ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: Zaladuj zmienne z .env do srodowiska
+>> "%LAUNCHER%" echo for /f "usebackq tokens=*" %%%%L in ^("%%NIPDIR%%\.env"^) do set "%%%%L"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: Katalog faktur - z .env (FAKTURY_DIR) lub domyslny
+>> "%LAUNCHER%" echo if defined FAKTURY_DIR ^(
+>> "%LAUNCHER%" echo     set "XML_DIR=%%FAKTURY_DIR%%"
+>> "%LAUNCHER%" echo ^) else ^(
+>> "%LAUNCHER%" echo     set "XML_DIR=%%NIPDIR%%\faktury"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo mkdir "%%XML_DIR%%" ^>nul 2^>^&1
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] AUTH_METHOD=%%AUTH_METHOD%% ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] XML_DIR=%%XML_DIR%% ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Tryb automatyczny: 7 dni, bez menu ---
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="1" ^(
+>> "%LAUNCHER%" echo     set "DAYS=7"
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] Tryb automatyczny: 7 dni wstecz ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     goto :run_fetch
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Tryb interaktywny: menu wyboru okresu ---
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo echo  Pobieranie faktur XML z KSeF
+>> "%LAUNCHER%" echo echo  ========================================
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo echo  NIP: %GEN_NIP%
+>> "%LAUNCHER%" echo echo  Katalog faktur: %%XML_DIR%%
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo echo  Wybierz okres pobierania:
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo echo    [1] Ostatnie 7 dni  (domyslnie - auto za 10s^)
+>> "%LAUNCHER%" echo echo    [2] Biezacy miesiac
+>> "%LAUNCHER%" echo echo    [3] Poprzedni miesiac
+>> "%LAUNCHER%" echo echo    [4] Biezacy kwartal
+>> "%LAUNCHER%" echo echo    [5] Biezacy rok
+>> "%LAUNCHER%" echo echo    [6] Wszystko (365 dni^)
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo choice /c 123456 /t 10 /d 1 /n /m "  Wybierz [1-6]: "
+>> "%LAUNCHER%" echo set "PERIOD_CHOICE=%%ERRORLEVEL%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: Oblicz --days na podstawie wyboru
+>> "%LAUNCHER%" echo set "DAYS=7"
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="1" set "DAYS=7"
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="2" (
+>> "%LAUNCHER%" echo     :: Biezacy miesiac: dni od 1-go do dzis
+>> "%LAUNCHER%" echo     for /f "tokens=1-3 delims=/" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
+>> "%LAUNCHER%" echo     for /f "tokens=1-3 delims=." %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%a"
+>> "%LAUNCHER%" echo     for /f "tokens=1-3 delims=-" %%%%a in ^("%%DATE%%"^) do set "TODAY_DAY=%%%%c"
+>> "%LAUNCHER%" echo     if not defined TODAY_DAY set "TODAY_DAY=30"
+>> "%LAUNCHER%" echo     set "DAYS=%%TODAY_DAY%%"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="3" (
+>> "%LAUNCHER%" echo     :: Poprzedni miesiac: 60 dni wstecz
+>> "%LAUNCHER%" echo     set "DAYS=60"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="4" (
+>> "%LAUNCHER%" echo     :: Biezacy kwartal: 90 dni
+>> "%LAUNCHER%" echo     set "DAYS=90"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="5" (
+>> "%LAUNCHER%" echo     :: Biezacy rok: 365 dni
+>> "%LAUNCHER%" echo     set "DAYS=365"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo if "%%PERIOD_CHOICE%%"=="6" set "DAYS=365"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo echo  Okres: %%DAYS%% dni wstecz
+>> "%LAUNCHER%" echo echo.
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :run_fetch
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] Okres: %%DAYS%% dni wstecz ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Buduj argumenty ksef_client.py ---
+>> "%LAUNCHER%" echo set FETCH_ARGS=--nip %GEN_NIP% --output-dir "%%XML_DIR%%" --days %%DAYS%%
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if "%%AUTH_METHOD%%"=="token" ^(
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] Metoda: token ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     set "FETCH_ARGS=!FETCH_ARGS! --token-enc %%KSEF_TOKEN_ENC%% --token-keyfile %%NIPDIR%%\certs\.aes_key"
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if "%%AUTH_METHOD%%"=="certificate" ^(
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] Metoda: certyfikat ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     set "FETCH_ARGS=!FETCH_ARGS! --cert %%NIPDIR%%\certs\auth_cert.crt --key %%NIPDIR%%\certs\auth_key.key"
+>> "%LAUNCHER%" echo     :: Przekaz zaszyfrowane haslo jesli jest
+>> "%LAUNCHER%" echo     if defined KEY_PASSWORD_ENC ^(
+>> "%LAUNCHER%" echo         set "FETCH_ARGS=!FETCH_ARGS! --password-enc !KEY_PASSWORD_ENC! --password-keyfile %%NIPDIR%%\certs\.aes_key"
+>> "%LAUNCHER%" echo     ^)
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" echo  Katalog docelowy: %%XML_DIR%%
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] Uruchamianie ksef_client.py... ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] FETCH_ARGS=!FETCH_ARGS! ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo cd /d "%%NIPDIR%%"
+>> "%LAUNCHER%" echo "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_client.py" !FETCH_ARGS! -v 2^>^>"%%LOG%%"
+>> "%LAUNCHER%" echo set "FETCH_ERR=!ERRORLEVEL!"
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] ksef_client ERRORLEVEL=!FETCH_ERR! ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: (token przekazywany zaszyfrowany - brak pliku tymczasowego)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if !FETCH_ERR! neq 0 ^(
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] BLAD: ksef_client zwrocil kod !FETCH_ERR! ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     if "%%AUTO_MODE%%"=="0" ^(
+>> "%LAUNCHER%" echo         echo.
+>> "%LAUNCHER%" echo         echo  !C_E![BLAD]!C_0! Pobieranie faktur nie powiodlo sie.
+>> "%LAUNCHER%" echo         echo         Szczegoly w logu: %%LOG%%
+>> "%LAUNCHER%" echo         echo.
+>> "%LAUNCHER%" echo     ^)
+>> "%LAUNCHER%" echo     del "%%LOCKFILE%%" ^>nul 2^>^&1
+>> "%LAUNCHER%" echo     exit /b 1
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Generowanie PDF ---
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] Sprawdzanie generatora PDF... ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo if not exist "%%KSEF%%\ksef_pdf.py" ^(
+>> "%LAUNCHER%" echo     echo [%%DATE%% %%TIME%%] BRAK ksef_pdf.py - pomijam PDF ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo     if "%%AUTO_MODE%%"=="0" echo  !C_I![INFO]!C_0! Brak ksef_pdf.py - generowanie PDF pominiete.
+>> "%LAUNCHER%" echo     goto :skip_pdf
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" ^(
+>> "%LAUNCHER%" echo     echo.
+>> "%LAUNCHER%" echo     echo  Generowanie PDF z pobranych faktur...
+>> "%LAUNCHER%" echo     echo  ========================================
+>> "%LAUNCHER%" echo     echo.
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo set "PDF_COUNT=0"
+>> "%LAUNCHER%" echo set "PDF_ERR=0"
+>> "%LAUNCHER%" echo set "PDF_SKIP=0"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo for /R "%%XML_DIR%%" %%%%f in ^(*.xml^) do ^(
+>> "%LAUNCHER%" echo     if not exist "%%%%~dpnf.pdf" ^(
+>> "%LAUNCHER%" echo         if "%%AUTO_MODE%%"=="0" echo   PDF: %%%%~nxf
+>> "%LAUNCHER%" echo         echo [%%DATE%% %%TIME%%] PDF: %%%%~nxf -^> %%%%~dpnf.pdf ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo         "%%KSEF%%\python\python.exe" "%%KSEF%%\ksef_pdf.py" "%%%%f" "%%%%~dpnf.pdf" 2^>^>"%%LOG%%"
+>> "%LAUNCHER%" echo         if !ERRORLEVEL! equ 0 ^(
+>> "%LAUNCHER%" echo             set /a PDF_COUNT+=1
+>> "%LAUNCHER%" echo         ^) else ^(
+>> "%LAUNCHER%" echo             set /a PDF_ERR+=1
+>> "%LAUNCHER%" echo             if "%%AUTO_MODE%%"=="0" echo   [*] Blad: %%%%~nxf
+>> "%LAUNCHER%" echo             echo [%%DATE%% %%TIME%%] BLAD PDF: %%%%~nxf ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo         ^)
+>> "%LAUNCHER%" echo     ^) else ^(
+>> "%LAUNCHER%" echo         set /a PDF_SKIP+=1
+>> "%LAUNCHER%" echo     ^)
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] PDF: !PDF_COUNT! nowych, !PDF_ERR! bledow, !PDF_SKIP! istniejacych ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" ^(
+>> "%LAUNCHER%" echo     echo.
+>> "%LAUNCHER%" echo     if !PDF_COUNT! gtr 0 echo  Wygenerowano !PDF_COUNT! nowych PDF.
+>> "%LAUNCHER%" echo     if !PDF_ERR! gtr 0 echo  Bledy przy !PDF_ERR! plikach.
+>> "%LAUNCHER%" echo     if !PDF_SKIP! gtr 0 echo  Pominieto !PDF_SKIP! - PDF juz istnieje.
+>> "%LAUNCHER%" echo     if !PDF_COUNT!==0 if !PDF_ERR!==0 if !PDF_SKIP!==0 echo  Brak plikow XML w folderze %%XML_DIR%%.
+>> "%LAUNCHER%" echo ^)
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :skip_pdf
+>> "%LAUNCHER%" echo del "%%LOCKFILE%%" ^>nul 2^>^&1
+>> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] KONIEC ^>^> "%%LOG%%"
+>> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" ^(
+>> "%LAUNCHER%" echo     echo.
+>> "%LAUNCHER%" echo     echo  ========================================
+>> "%LAUNCHER%" echo     echo  Gotowe.
+>> "%LAUNCHER%" echo     echo  Katalog faktur: %%XML_DIR%%
+>> "%LAUNCHER%" echo     echo  Log: %%LOG%%
+>> "%LAUNCHER%" echo ^)
 endlocal
 echo        Launcher: !NIP_DIR!\pobierz-faktury.bat
 
@@ -1153,11 +1151,11 @@ echo.
 echo  Czy dodac automatyczne pobieranie faktur do Harmonogramu zadan?
 echo  Faktury beda pobierane co 60 minut w tle (tryb --auto).
 echo.
-echo    [1] Nie  (domyslnie - auto za 15s)
+echo    [1] Nie
 echo    [2] Tak - dodaj do Harmonogramu zadan
 echo.
-choice /c 12 /t 15 /d 1 /n /m "  Wybierz [1-2]: "
-set "SCHED_CHOICE=!ERRORLEVEL!"
+set "SCHED_CHOICE=1"
+set /p "SCHED_CHOICE=  Wybierz [1-2] (domyslnie 1): "
 
 if "!SCHED_CHOICE!"=="2" (
     set "TASK_NAME=KSeF-Faktury-!CONTEXT_NIP!"
