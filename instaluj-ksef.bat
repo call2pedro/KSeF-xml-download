@@ -512,12 +512,12 @@ if "!CERT_EXISTS!"=="1" (
     echo.
     set /p "CERT_REPLACE=  Zastapic istniejacy certyfikat? [T/N]: "
 )
-if "!CERT_EXISTS!"=="1" if /i "!CERT_REPLACE!" neq "T" (
-    echo        Pozostawiono istniejacy certyfikat.
-    set "CERT_SRC_SAVED="
-    set "KEY_SRC_SAVED="
-    goto :ask_key_password
-)
+set "CERT_SKIP=0"
+if "!CERT_EXISTS!"=="1" if /i "!CERT_REPLACE!" neq "T" set "CERT_SKIP=1"
+if "!CERT_SKIP!"=="1" echo        Pozostawiono istniejacy certyfikat.
+if "!CERT_SKIP!"=="1" set "CERT_SRC_SAVED="
+if "!CERT_SKIP!"=="1" set "KEY_SRC_SAVED="
+if "!CERT_SKIP!"=="1" goto :ask_key_password
 
 :: Domyslne sciezki do plikow certyfikatu
 set "DEFAULT_CERT=!CERT_TARGET_DIR!\auth_cert.crt"
@@ -531,11 +531,9 @@ echo.
 
 set "CHANGE_CERT_PATHS=N"
 set /p "CHANGE_CERT_PATHS=  Czy chcesz zmienic domyslne sciezki? [T/N] (domyslnie N): "
-if /i "!CHANGE_CERT_PATHS!" neq "T" (
-    set "CERT_SRC=!DEFAULT_CERT!"
-    set "KEY_SRC=!DEFAULT_KEY!"
-    goto :verify_cert_files
-)
+if /i "!CHANGE_CERT_PATHS!" neq "T" set "CERT_SRC=!DEFAULT_CERT!"
+if /i "!CHANGE_CERT_PATHS!" neq "T" set "KEY_SRC=!DEFAULT_KEY!"
+if /i "!CHANGE_CERT_PATHS!" neq "T" goto :verify_cert_files
 
 :: Sciezka do certyfikatu .crt
 :ask_cert_path
@@ -643,7 +641,15 @@ set "KEY_PASSWORD_ENC="
 set "PW_TMPFILE=%TEMP%\ksef_pw_%RANDOM%%RANDOM%%RANDOM%.tmp"
 
 echo.
-echo  !C_PW!Haslo klucza prywatnego!C_0! (Enter = brak hasla):
+set "HAS_PASSWORD=N"
+set /p "HAS_PASSWORD=  Czy klucz prywatny ma haslo? [T/N] (domyslnie N): "
+if /i "!HAS_PASSWORD!" neq "T" (
+    echo        Klucz prywatny bez hasla.
+    echo [%DATE% %TIME%] Haslo: puste >> "%LOG_FILE%"
+    goto :password_done
+)
+echo.
+echo  !C_PW!Haslo klucza prywatnego!C_0!:
 echo  (haslo zostanie zaszyfrowane AES-256 i zapisane lokalnie)
 
 :: Maskowanie hasla gwiazdkami — PowerShell EncodedCommand (bez nawiasow w batch)
