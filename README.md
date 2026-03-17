@@ -6,7 +6,7 @@ Obsluguje dwie metody uwierzytelniania: **token KSeF** lub **certyfikat XAdES**.
 
 Schemat faktury: **FA(2)** - [CRD 2023/06/29/12648](http://crd.gov.pl/wzor/2023/06/29/12648/)
 
-Wersja: **1.3.0**
+Wersja: **1.4.0**
 
 ---
 
