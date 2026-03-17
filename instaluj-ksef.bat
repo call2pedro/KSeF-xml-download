@@ -62,17 +62,12 @@ echo  ============================================================
 echo.
 echo  Instalacja do: %INSTALL_DIR%
 echo.
-echo  Zrodla:
-echo   ksef-cli           https://github.com/%GITHUB_REPO_CLI%       (GPL-3.0)
-echo   ksef-xml-download  https://github.com/sstybel/ksef-xml-download (MIT)
-echo   KSeF API           https://www.podatki.gov.pl/ksef/
+echo  KSeF API: https://www.podatki.gov.pl/ksef/
 echo.
 echo  ------------------------------------------------------------
 echo   WARUNKI KORZYSTANIA
 echo  ------------------------------------------------------------
-echo   Oprogramowanie bazuje na projektach open-source:
-echo   - ksef-cli (GPL-3.0) - flow tokenowy KSeF
-echo   - sstybel/ksef-xml-download (MIT) - wzorzec podpisu XAdES
+echo   Oprogramowanie udostepniane na licencji MIT.
 echo.
 echo   Niniejsze oprogramowanie udostepniane jest w stanie "tak
 echo   jak jest". Autorzy dokladaja wszelkich staran, aby

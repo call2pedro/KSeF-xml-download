@@ -1,5 +1,5 @@
 """
-Klient KSeF (Krajowy System e-Faktur) — uwierzytelnianie tokenem i certyfikatem.
+Klient KSeF (Krajowy System e-Faktur) - uwierzytelnianie tokenem i certyfikatem.
 
 Obsługuje:
 - Uwierzytelnianie tokenem KSeF (RSA-OAEP)
@@ -7,14 +7,7 @@ Obsługuje:
 - Wyszukiwanie faktur (query metadata)
 - Pobieranie XML faktur
 
-Źródła:
-- aiv/ksef-cli (GPL-3.0) — flow tokenowy: challenge, szyfrowanie RSA-OAEP,
-  polling statusu autoryzacji, pobieranie faktur z paginacją
-- sstybel/ksef-xml-download (MIT) — flow XAdES: budowa AuthTokenRequest XML,
-  podpis XAdES-BES (enveloped), kanonizacja C14N, struktura ds:Signature
-  z QualifyingProperties/SignedProperties
-
-Autor: IT TASK FORCE Piotr Mierzenski — https://ittf.pl
+Autor: IT TASK FORCE Piotr Mierzenski - https://ittf.pl
 """
 
 import base64

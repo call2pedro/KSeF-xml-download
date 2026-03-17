@@ -1,0 +1,30 @@
+# Version control
+.git
+
+# Documentation
+*.md
+docs/
+
+# Windows installer and scripts
+*.bat
+instaluj-ksef.sh
+deploy-*.sh
+ITTF-*.md
+
+# Python artifacts
+__pycache__
+*.pyc
+.venv
+.pytest_cache
+
+# Tests
+test_*.py
+
+# Dev tooling
+uv.lock
+.python-version
+.claude
+.env
+
+# Entry points not used in container
+main.py
