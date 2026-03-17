@@ -5,11 +5,9 @@
 *.md
 docs/
 
-# Windows installer and scripts
+# Installers and scripts
 *.bat
 instaluj-ksef.sh
-deploy-*.sh
-ITTF-*.md
 
 # Python artifacts
 __pycache__
@@ -23,9 +21,11 @@ test_*.xml
 
 # Dev tooling
 uv.lock
+pyproject.toml
 .python-version
 .claude
 .env
+.gitignore
 
 # Entry points not used in container
 main.py

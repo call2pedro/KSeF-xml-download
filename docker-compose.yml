@@ -1,6 +1,8 @@
 services:
   ksef-xml-download:
-    build: .
+    build:
+      context: .
+      dockerfile: linux/Dockerfile
     container_name: ksef-xml-download
     image: ksef-xml-download:latest
     restart: unless-stopped

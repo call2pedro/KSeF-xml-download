@@ -336,24 +336,24 @@ if "!SELF_INNER!"=="" (
 
 :: Kopiuj ksef_pdf.py, ksef_client.py i fonts/ do INSTALL_DIR
 mkdir "%INSTALL_DIR%" >nul 2>&1
-if exist "!SELF_INNER!\ksef_pdf.py" (
-    copy /Y "!SELF_INNER!\ksef_pdf.py" "%INSTALL_DIR%\" >nul 2>&1
+if exist "!SELF_INNER!\app\ksef_pdf.py" (
+    copy /Y "!SELF_INNER!\app\ksef_pdf.py" "%INSTALL_DIR%\" >nul 2>&1
 ) else (
     echo  !C_Q![UWAGA]!C_0! Brak ksef_pdf.py w pobranym repozytorium.
     set "PDF_AVAILABLE=0"
     goto :skip_pdf_download
 )
-if exist "!SELF_INNER!\ksef_client.py" (
-    copy /Y "!SELF_INNER!\ksef_client.py" "%INSTALL_DIR%\" >nul 2>&1
+if exist "!SELF_INNER!\app\ksef_client.py" (
+    copy /Y "!SELF_INNER!\app\ksef_client.py" "%INSTALL_DIR%\" >nul 2>&1
     echo        ksef_client.py skopiowany.
 ) else (
     echo  !C_Q![UWAGA]!C_0! Brak ksef_client.py w pobranym repozytorium.
 )
 
 mkdir "%INSTALL_DIR%\fonts" >nul 2>&1
-if exist "!SELF_INNER!\fonts\Lato-Regular.ttf" (
-    copy /Y "!SELF_INNER!\fonts\Lato-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
-    copy /Y "!SELF_INNER!\fonts\Lato-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+if exist "!SELF_INNER!\app\fonts\Lato-Regular.ttf" (
+    copy /Y "!SELF_INNER!\app\fonts\Lato-Regular.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
+    copy /Y "!SELF_INNER!\app\fonts\Lato-Bold.ttf" "%INSTALL_DIR%\fonts\" >nul 2>&1
 ) else (
     echo  !C_Q![UWAGA]!C_0! Brak fontow w pobranym repozytorium.
     set "PDF_AVAILABLE=0"

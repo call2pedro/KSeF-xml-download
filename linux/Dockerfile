@@ -46,9 +46,9 @@ RUN groupadd -g 1000 ksef && useradd -u 1000 -g 1000 -s /bin/bash -d /home/ksef 
 
 WORKDIR /app
 
-COPY ksef_client.py ksef_pdf.py ./
-COPY fonts/ ./fonts/
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY app/ksef_client.py app/ksef_pdf.py ./
+COPY app/fonts/ ./fonts/
+COPY linux/entrypoint.sh /entrypoint.sh
 
 RUN chmod +x /entrypoint.sh
 
