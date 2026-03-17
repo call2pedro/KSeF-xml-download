@@ -26,13 +26,12 @@ Wersja: **1.4.0**
 
 | Krok | Opis |
 |------|------|
-| 1/7 | Wykrywa architekture systemu (64-bit, 32-bit, ARM) |
-| 2/7 | Pobiera Python 3.12 embeddable (curl/PowerShell/certutil) |
-| 3/7 | Pobiera ksef_client.py, ksef_pdf.py i fonty z GitHub |
-| 4/7 | Pobiera ksef-cli z GitHub (legacy backup) |
-| 5/7 | Instaluje zaleznosci Python (requests, cryptography, lxml, reportlab, ...) |
-| 6/7 | Pyta o metode auth (Token/Certyfikat), NIP, folder docelowy faktur |
-| 7/7 | Tworzy pliki konfiguracyjne, launcher i opcjonalnie harmonogram zadan |
+| 1/6 | Wykrywa architekture systemu (64-bit, 32-bit, ARM) |
+| 2/6 | Pobiera Python 3.12 embeddable (curl/PowerShell/certutil) |
+| 3/6 | Pobiera ksef_client.py, ksef_pdf.py i fonty z GitHub |
+| 4/6 | Instaluje zaleznosci Python (requests, cryptography, lxml, reportlab, ...) |
+| 5/6 | Pyta o metode auth (Token/Certyfikat), NIP, folder docelowy faktur |
+| 6/6 | Tworzy pliki konfiguracyjne, launcher i opcjonalnie harmonogram zadan |
 
 Instalator wyswietla kolorowe komunikaty ANSI (Windows 10+).
 
@@ -311,17 +310,6 @@ Szczegoly: [docs/DOCKER-DEPENDENCIES.md](docs/DOCKER-DEPENDENCIES.md)
 | cron | Harmonogram pobierania faktur |
 | libxml2, libxslt1.1 | Biblioteki XML (runtime) |
 | libjpeg62-turbo, zlib1g, libfreetype6 | Biblioteki graficzne (runtime) |
-
-## Powiazane projekty KSeF
-
-Inne projekty zwiazane z KSeF (niezalezne od tego repozytorium):
-
-| Projekt | Repozytorium | Licencja | Opis |
-|---------|-------------|----------|------|
-| ksef-cli | [aiv/ksef-cli](https://github.com/aiv/ksef-cli) | GPL-3.0 | Klient KSeF w Pythonie (flow tokenowy) |
-| ksef-xml-download | [sstybel/ksef-xml-download](https://github.com/sstybel/ksef-xml-download) | MIT | Klient KSeF z podpisem XAdES |
-| ksef-pdf-generator | [CIRFMF/ksef-pdf-generator](https://github.com/CIRFMF/ksef-pdf-generator) | - | Wizualizacja PDF w TypeScript/pdfmake |
-| KSeF API | [podatki.gov.pl/ksef](https://www.podatki.gov.pl/ksef/) | - | Oficjalne API Ministerstwa Finansow |
 
 ## Autor
 
