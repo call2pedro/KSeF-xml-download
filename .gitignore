@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Dev tooling
+pyproject.toml
+uv.lock
+.python-version
+main.py
+.claude/
+
+# Tests
+test_*.py
+test_*.xml
+
+# Deploy scripts
+deploy-*.sh
+test-post-deploy.sh
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime data
+data/
+*.log
+.env

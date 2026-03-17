@@ -2,6 +2,19 @@
 
 Wszystkie istotne zmiany w projekcie KSeF XML Download.
 
+## [1.4.0] - 2026-03-17
+
+### Dodane
+- **Wsparcie Linux/Docker** - Dockerfile (multi-stage build, Python 3.13, tini, cron), docker-compose.yml z hardening (read_only, no-new-privileges, tmpfs).
+- **Instalator Linux** (`instaluj-ksef.sh`) - interaktywny 6-krokowy instalator analogiczny do wersji Windows, walidacja NIP z suma kontrolna, szyfrowanie AES-256-GCM przez kontener Docker.
+- **Entrypoint multi-NIP** (`linux/entrypoint.sh`) - automatyczne pobieranie faktur dla wielu podatnikow, tryb cron i --once, separacja uprawnien (cron root, Python jako uzytkownik ksef).
+
+### Zmienione
+- **Restrukturyzacja repozytorium** - kod aplikacji w `app/`, pliki Docker w `linux/`, instalatory w katalogu glownym.
+- **README** - dual-platform (Windows + Linux/Docker) z procesem pytan obu instalatorow.
+- **Atrybucja** - sekcja "Zrodla" zmieniona na "Powiazane projekty KSeF (niezalezne od tego repozytorium)".
+- Usunieto pliki deweloperskie z repozytorium (testy, deploy scripts, pyproject.toml).
+
 ## [1.2.0] - 2026-03-15
 
 ### Dodane

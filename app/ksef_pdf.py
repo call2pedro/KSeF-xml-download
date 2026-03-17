@@ -2,18 +2,11 @@
 KSeF XML to PDF converter using reportlab.
 
 Parses KSeF invoice XML (FA(1), FA(2), FA(3) schemas) and generates
-a readable A4 PDF invoice document. Also supports UPO (Urzędowe Poświadczenie
+a readable A4 PDF invoice document. Also supports UPO (Urzedowe Poswiadczenie
 Odbioru) generation in landscape A4.
 
-Author: IT TASK FORCE Piotr Mierzenski <biuro@ittf.pl> — https://ittf.pl
+Author: IT TASK FORCE Piotr Mierzenski <biuro@ittf.pl> - https://ittf.pl
 Source: https://github.com/call2pedro/KSeF-xml-download
-
-Źródła KSeF:
-  CIRFMF/ksef-pdf-generator (TypeScript/pdfmake) — struktura wizualna faktury,
-  układ sekcji (nagłówek, strony, pozycje, podsumowanie VAT, płatność).
-  Original: https://github.com/CIRFMF/ksef-pdf-generator
-  Fork:     https://github.com/aiv/ksef-pdf-generator
-Reimplementacja w Pythonie z użyciem reportlab.
 """
 
 import argparse
@@ -94,7 +87,7 @@ VAT_RATE_FIELDS = [
     ("11", "11", "oo"),
 ]
 
-# Invoice type labels (CIRFMF standard)
+# Invoice type labels
 RODZAJ_FAKTURY_LABELS = {
     "VAT": "Faktura podstawowa",
     "ZAL": "Faktura zaliczkowa",
@@ -108,7 +101,7 @@ RODZAJ_FAKTURY_LABELS = {
 # Font directory relative to this file
 FONTS_DIR = Path(__file__).parent / "fonts"
 
-# Colors (CIRFMF standard)
+# Colors
 COLOR_HEADER_BG = HexColor("#343A40")
 COLOR_SECTION_BG = HexColor("#F6F7FA")
 COLOR_TEXT = HexColor("#343A40")
@@ -124,11 +117,7 @@ GENERATOR_LINE_1 = (
     "Wygenerowano przez: KSeF-xml-download "
     "(https://github.com/call2pedro/KSeF-xml-download)"
 )
-GENERATOR_LINE_2 = (
-    "Na podstawie: ksef-pdf-generator CIRFMF "
-    "(https://github.com/CIRFMF/ksef-pdf-generator)"
-)
-GENERATOR_LINE_3 = "Autor: IT TASK FORCE Piotr Mierzenski — https://ittf.pl"
+GENERATOR_LINE_2 = "Autor: IT TASK FORCE Piotr Mierzenski - https://ittf.pl"
 
 # Szerokości kolumn tabeli pozycji (mm, None = elastyczna)
 ITEM_COL_WIDTHS = [10, None, 18, 22, 35, 22, 38]
@@ -1575,7 +1564,6 @@ class InvoicePDF:
             Spacer(1, 2 * mm),
             Paragraph(GENERATOR_LINE_1, self.styles["watermark"]),
             Paragraph(GENERATOR_LINE_2, self.styles["watermark"]),
-            Paragraph(GENERATOR_LINE_3, self.styles["watermark"]),
         ]
 
 
@@ -1810,7 +1798,6 @@ class UpoPDF:
             Spacer(1, 2 * mm),
             Paragraph(GENERATOR_LINE_1, ws),
             Paragraph(GENERATOR_LINE_2, ws),
-            Paragraph(GENERATOR_LINE_3, ws),
         ]
 
 
