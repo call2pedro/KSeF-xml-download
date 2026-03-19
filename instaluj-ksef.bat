@@ -958,6 +958,13 @@ setlocal DisableDelayedExpansion
 >> "%LAUNCHER%" echo.
 >> "%LAUNCHER%" echo if "%%AUTO_MODE%%"=="0" title Pobieranie faktur z KSeF + generowanie PDF
 >> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Sciezki ---
+>> "%LAUNCHER%" echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
+>> "%LAUNCHER%" echo set "NIPDIR=%%KSEF%%\%GEN_NIP%"
+>> "%LAUNCHER%" echo.
+>> "%LAUNCHER%" echo :: --- Log ---
+>> "%LAUNCHER%" echo set "LOG=%%NIPDIR%%\pobierz-faktury.log"
+>> "%LAUNCHER%" echo.
 >> "%LAUNCHER%" echo :: --- Lockfile: zapobieganie rownoleglym uruchomieniom ---
 >> "%LAUNCHER%" echo set "LOCKFILE=%%NIPDIR%%\pobierz-faktury.lock"
 >> "%LAUNCHER%" echo if exist "%%LOCKFILE%%" ^(
@@ -966,13 +973,6 @@ setlocal DisableDelayedExpansion
 >> "%LAUNCHER%" echo     exit /b 0
 >> "%LAUNCHER%" echo ^)
 >> "%LAUNCHER%" echo echo %%DATE%% %%TIME%% ^> "%%LOCKFILE%%"
->> "%LAUNCHER%" echo.
->> "%LAUNCHER%" echo :: --- Sciezki ---
->> "%LAUNCHER%" echo set "KSEF=%%LOCALAPPDATA%%\KSeFCLI"
->> "%LAUNCHER%" echo set "NIPDIR=%%KSEF%%\%GEN_NIP%"
->> "%LAUNCHER%" echo.
->> "%LAUNCHER%" echo :: --- Log ---
->> "%LAUNCHER%" echo set "LOG=%%NIPDIR%%\pobierz-faktury.log"
 >> "%LAUNCHER%" echo echo =============================== ^>^> "%%LOG%%"
 >> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] START (auto=%%AUTO_MODE%%^) ^>^> "%%LOG%%"
 >> "%LAUNCHER%" echo echo [%%DATE%% %%TIME%%] USER=%%USERNAME%% COMPUTER=%%COMPUTERNAME%% ^>^> "%%LOG%%"
@@ -1146,6 +1146,11 @@ setlocal DisableDelayedExpansion
 endlocal
 echo        Launcher: !NIP_DIR!\pobierz-faktury.bat
 
+:: --- VBS wrapper: ukryte okno dla harmonogramu zadan ---
+set "VBS_WRAPPER=!NIP_DIR!\pobierz-faktury-auto.vbs"
+> "!VBS_WRAPPER!" echo Set oShell = CreateObject("WScript.Shell")
+>> "!VBS_WRAPPER!" echo oShell.Run "cmd /c ""!NIP_DIR!\pobierz-faktury.bat"" --auto", 0, True
+
 :: --- Pytanie o harmonogram zadan (Task Scheduler) ---
 echo.
 echo  Czy dodac automatyczne pobieranie faktur do Harmonogramu zadan?
@@ -1162,9 +1167,9 @@ if "!SCHED_CHOICE!"=="2" (
     echo.
     echo        Tworzenie zadania: !TASK_NAME!
     echo        Interwat: co 60 minut
-    echo        Skrypt: !NIP_DIR!\pobierz-faktury.bat --auto
+    echo        Skrypt: !NIP_DIR!\pobierz-faktury-auto.vbs (okno ukryte^)
     echo.
-    schtasks /create /tn "!TASK_NAME!" /tr "\"!NIP_DIR!\pobierz-faktury.bat\" --auto" /sc MINUTE /mo 60 /f >nul 2>&1
+    schtasks /create /tn "!TASK_NAME!" /tr "wscript.exe \"!VBS_WRAPPER!\"" /sc MINUTE /mo 60 /f >nul 2>&1
     set "SCHED_ERR=!ERRORLEVEL!"
     if !SCHED_ERR! equ 0 (
         echo        Zadanie "!TASK_NAME!" utworzone pomyslnie.
@@ -1173,7 +1178,7 @@ if "!SCHED_CHOICE!"=="2" (
     ) else (
         echo  !C_Q![UWAGA]!C_0! Nie udalo sie utworzyc zadania w Harmonogramie.
         echo          Mozesz dodac recznie: Harmonogram zadan ^> Nowe zadanie
-        echo          Program: "!NIP_DIR!\pobierz-faktury.bat" --auto
+        echo          Program: wscript.exe "!VBS_WRAPPER!"
         echo          Wyzwalacz: co 60 minut
         echo [%DATE% %TIME%] BLAD schtasks: kod !SCHED_ERR! >> "%LOG_FILE%"
     )
